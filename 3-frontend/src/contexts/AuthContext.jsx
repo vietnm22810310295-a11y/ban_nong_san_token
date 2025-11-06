@@ -1,7 +1,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { userAPI } from '../services/api';
 import { useWeb3 } from './Web3Context';
-import RegisterModal from '../components/RegisterModal'; // THÊM DÒNG NÀY
+import RegisterModal from '../components/RegisterModal';
 
 const AuthContext = createContext();
 
@@ -17,8 +17,8 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [showRegisterModal, setShowRegisterModal] = useState(false); // THÊM STATE NÀY
-  const [pendingWallet, setPendingWallet] = useState(''); // THÊM STATE NÀY
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [pendingWallet, setPendingWallet] = useState('');
   
   const { account, isConnected, connectWallet } = useWeb3();
 
@@ -40,31 +40,25 @@ export const AuthProvider = ({ children }) => {
       const { data } = response.data;
       
       localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data));
+      // Sửa nhỏ: data.user (vì API trả về { user, token })
+      localStorage.setItem('user', JSON.stringify(data.user)); 
       
-      setUser(data);
+      setUser(data.user); // Sửa nhỏ: data.user
       setIsAuthenticated(true);
     } catch (error) {
       console.log('Auto-login failed, user needs to register');
     }
   };
 
-  // ✅ Hàm login ĐÃ SỬA
+  // ✅ Hàm login (Sửa lại để dùng userAPI)
   const login = async (walletAddress) => {
     try {
       console.log('🟡 Attempting login for:', walletAddress);
       
-      const response = await fetch('http://localhost:5000/api/users/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          walletAddress: walletAddress
-        })
-      });
+      // Sửa lại: Dùng userAPI cho nhất quán
+      const response = await userAPI.login(walletAddress);
+      const data = response.data; // axios bọc trong response.data
 
-      const data = await response.json();
       console.log('🟡 Login response:', data);
       
       if (data.success) {
@@ -74,8 +68,18 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('user', JSON.stringify(data.data.user));
         localStorage.setItem('token', data.data.token);
         return { success: true, data: data.data };
-      } else if (data.requiresRegistration) {
-        console.log('🟡 User needs registration');
+      } 
+      // Chú ý: API login của bạn không trả về `requiresRegistration`
+      // Nó trả về lỗi 404
+      else {
+        return { success: false, message: data.message };
+      }
+    } catch (error) {
+      console.error('❌ Login failed:', error);
+      // Xử lý lỗi từ axios
+      const data = error.response?.data;
+      if (data && data.requiresRegistration) {
+        console.log('🟡 User needs registration (from catch)');
         setPendingWallet(walletAddress);
         setShowRegisterModal(true);
         return { 
@@ -83,34 +87,24 @@ export const AuthProvider = ({ children }) => {
           requiresRegistration: true,
           message: 'Vui lòng đăng ký tài khoản trước' 
         };
-      } else {
-        return { success: false, message: data.message };
       }
-    } catch (error) {
-      console.error('❌ Login failed:', error);
-      return { success: false, message: error.message };
+      return { success: false, message: data?.message || error.message };
     }
   };
 
-  // ✅ Hàm register ĐÃ SỬA
+  // ✅ Hàm register (Sửa lại để dùng userAPI)
   const register = async (userData) => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:5000/api/users/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(userData)
-      });
-
-      const data = await response.json();
+      // Sửa lại: Dùng userAPI cho nhất quán
+      const response = await userAPI.register(userData);
+      const data = response.data; // axios bọc trong response.data
       
       if (data.success) {
         console.log('✅ Register successful:', data.data);
-        setUser(data.data);
+        setUser(data.data); // data.data đã chứa user và token
         setIsAuthenticated(true);
-        localStorage.setItem('user', JSON.stringify(data.data));
+        localStorage.setItem('user', JSON.stringify(data.data)); // data.data đã chứa user
         localStorage.setItem('token', data.data.token);
         
         return { 
@@ -128,14 +122,14 @@ export const AuthProvider = ({ children }) => {
       console.error('Register error:', error);
       return { 
         success: false, 
-        message: error.message || 'Lỗi đăng ký' 
+        message: error.response?.data?.message || 'Lỗi đăng ký' 
       };
     } finally {
       setLoading(false);
     }
   };
 
-  // ✅ Hàm logout
+  // ✅ Hàm logout (Giữ nguyên)
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -145,7 +139,7 @@ export const AuthProvider = ({ children }) => {
     setPendingWallet('');
   };
 
-  // ✅ Hàm checkAuth
+  // ✅ Hàm checkAuth (Giữ nguyên)
   const checkAuth = async () => {
     try {
       setLoading(true);
@@ -169,7 +163,7 @@ export const AuthProvider = ({ children }) => {
   const updateUser = async (userData) => {
     try {
       const response = await userAPI.updateProfile(userData);
-      const { data } = response.data;
+      const { data } = response.data; // API trả về { success, message, data }
       
       localStorage.setItem('user', JSON.stringify(data));
       setUser(data);
@@ -179,7 +173,8 @@ export const AuthProvider = ({ children }) => {
         message: 'Cập nhật thành công',
         data 
       };
-    } catch (error) {
+    } // <--- LỖI CỦA BẠN ĐÃ ĐƯỢC SỬA Ở ĐÂY (XÓA DẤU PHẨY)
+    catch (error) {
       console.error('Update user error:', error);
       return { 
         success: false, 
@@ -190,15 +185,16 @@ export const AuthProvider = ({ children }) => {
 
   // ✅ Hàm xử lý đăng ký thành công
   const handleRegisterSuccess = (userData) => {
-    setUser(userData.user);
+    // userData là { _id, name, walletAddress, ... token }
+    setUser(userData);
     setIsAuthenticated(true);
-    localStorage.setItem('user', JSON.stringify(userData.user));
+    localStorage.setItem('user', JSON.stringify(userData));
     localStorage.setItem('token', userData.token);
     setShowRegisterModal(false);
     setPendingWallet('');
   };
 
-  // ✅ Hàm loginWithMetaMask ĐÃ SỬA
+  // ✅ Hàm loginWithMetaMask
   const loginWithMetaMask = async () => {
     try {
       // Kết nối wallet trước
@@ -218,14 +214,31 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // ✅ Hàm registerWithMetaMask ĐÃ SỬA
+  // [---- HÀM MỚI BẠN CẦN LÀ ĐÂY ----]
+  // @desc    Đăng nhập bằng địa chỉ ví (form thủ công)
+  const loginWithAddress = async (walletAddress) => {
+    try {
+      // Chỉ cần gọi hàm login(walletAddress) đã có sẵn là đủ
+      const loginResult = await login(walletAddress);
+      return loginResult;
+    } catch (error) {
+      return { 
+        success: false, 
+        message: error.message || 'Lỗi đăng nhập với địa chỉ' 
+      };
+    }
+  };
+  // [---- KẾT THÚC HÀM MỚI ----]
+
+
+  // ✅ Hàm registerWithMetaMask
   const registerWithMetaMask = async (userData) => {
     try {
       // Kết nối wallet trước
       const walletResult = await connectWallet();
       if (!walletResult.success) {
         return walletResult;
-      }
+    D }
 
       // Đảm bảo wallet address khớp
       if (walletResult.account.toLowerCase() !== userData.walletAddress.toLowerCase()) {
@@ -262,6 +275,7 @@ export const AuthProvider = ({ children }) => {
     checkAuth,
     updateUser,
     loginWithMetaMask,
+    loginWithAddress, // [ĐÃ THÊM HÀM NÀY]
     registerWithMetaMask,
     showRegisterModal,
     closeRegisterModal

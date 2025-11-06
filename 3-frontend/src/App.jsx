@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom'; // ĐÃ THÊM LINK
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { Web3Provider } from './contexts/Web3Context';
 import Header from './components/Header';
@@ -10,6 +10,7 @@ import RegisterPage from './pages/RegisterPage';
 import ProductsPage from './pages/ProductsPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import FarmerDashboard from './pages/FarmerDashboard';
+import MyPurchases from './pages/MyPurchases'; // [THÊM MỚI] Import trang mới
 import './index.css';
 
 function App() {
@@ -45,6 +46,16 @@ function App() {
                   } 
                 />
                 
+                {/* [THÊM MỚI] Route cho Lịch sử mua hàng (chỉ Buyer) */}
+                <Route 
+                  path="/my-purchases" 
+                  element={
+                    <ProtectedRoute requiredRole="buyer">
+                      <MyPurchases />
+                    </ProtectedRoute>
+                  } 
+                />
+
                 {/* 404 Page */}
                 <Route path="*" element={
                   <div className="min-h-screen flex items-center justify-center">

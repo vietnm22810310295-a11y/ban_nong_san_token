@@ -19670,12 +19670,12 @@
     "1337": {
       "events": {},
       "links": {},
-      "address": "0x7f9729D8c88BFAde7C16271812aA11056d9D1c84",
-      "transactionHash": "0xcde1614cfbd26ecc5decf1f5029dfcf6b9506efd4bb09b714cf144b15d6839e4"
+      "address": "0x4dA2c9F4fBf0ae413a6b4758D57cd10735909661",
+      "transactionHash": "0x1de63c0a09f43043eae926de08a54e3b3bebf4388cdc70f276829239137289d1"
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2025-10-24T03:06:04.264Z",
+  "updatedAt": "2025-11-06T06:06:26.723Z",
   "networkType": "ethereum",
   "devdoc": {
     "kind": "dev",

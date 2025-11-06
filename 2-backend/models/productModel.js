@@ -77,8 +77,14 @@ const productSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['available', 'sold', 'pending'],
+      // [THÊM MỚI] Thêm 'cash-pending'
+      enum: ['available', 'sold', 'pending', 'refund-requested', 'refunded', 'cash-pending'],
       default: 'available'
+    },
+    refundReason: {
+      type: String,
+      trim: true,
+      default: null
     },
     quantity: {
       type: Number,
@@ -88,7 +94,7 @@ const productSchema = new mongoose.Schema(
     unit: {
       type: String,
       default: 'kg',
-      enum: ['kg', 'tấn', 'tạ', 'bao']
+      enum: ['kg', 'tấn', 'tạ', 'bao', 'lô'] // 'lô' đã có từ trước
     }
   },
   {

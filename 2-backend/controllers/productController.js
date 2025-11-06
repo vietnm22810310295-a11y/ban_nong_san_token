@@ -13,14 +13,15 @@ const getProducts = async (req, res) => {
       organic,
       minPrice, 
       maxPrice,
-      status = 'available',
+      status = '', // Đã sửa: Lấy TẤT CẢ
       search,
       sortBy = 'createdAt',
       sortOrder = 'desc'
     } = req.query;
 
     // Tạo filter object
-    const filter = { status };
+    const filter = {};
+    if (status) filter.status = status; // Chỉ filter nếu status được gửi lên
     
     if (type && type !== 'all') filter.productType = type;
     if (region) filter.region = new RegExp(region, 'i');
@@ -86,11 +87,11 @@ const getProducts = async (req, res) => {
 };
 
 // @desc    Lấy chi tiết sản phẩm
-// @route   GET /api/products/:id
+// @route   GET /api/products/:id (id là blockchainId)
 // @access  Public
 const getProduct = async (req, res) => {
   try {
-    const product = await Product.findOne({ blockchainId: req.params.id });
+    const product = await Product.findOne({ blockchainId: req.params.id }); 
     
     if (!product) {
       return res.status(404).json({
@@ -135,8 +136,6 @@ const createProduct = async (req, res) => {
       isOrganic,
       images,
       certifications,
-      quantity,
-      unit
     } = req.body;
 
     // Validation
@@ -179,8 +178,6 @@ const createProduct = async (req, res) => {
       isOrganic: isOrganic || false,
       images: images || [],
       certifications: certifications || [],
-      quantity: quantity || 1,
-      unit: unit || 'kg',
       status: 'available'
     });
 
@@ -240,15 +237,15 @@ const getFarmerProducts = async (req, res) => {
 };
 
 // @desc    Cập nhật sản phẩm
-// @route   PUT /api/products/:id
-// @access  Private (Product owner)
+// @route   PUT /api/products/update/:mongoId
+// @access  Private
 const updateProduct = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { mongoId } = req.params; 
     const updateData = req.body;
 
-    // Tìm sản phẩm
-    const product = await Product.findOne({ blockchainId: id });
+    // Tìm sản phẩm bằng _id của MongoDB
+    const product = await Product.findById(mongoId); 
     
     if (!product) {
       return res.status(404).json({
@@ -257,22 +254,35 @@ const updateProduct = async (req, res) => {
       });
     }
 
-    // Kiểm tra quyền sở hữu
-    if (product.farmerWallet !== req.user.walletAddress) {
-      return res.status(403).json({
-        success: false,
-        message: 'Bạn không có quyền chỉnh sửa sản phẩm này'
-      });
+    const isFarmerOwner = product.farmerWallet === req.user.walletAddress;
+    const isBuyerUpdatingStatus = 
+        (req.user.role === 'buyer' || req.user.role === 'admin') &&
+        updateData.status === 'sold';
+
+    if (isBuyerUpdatingStatus) {
+        const allowedUpdates = ['status', 'isSold', 'currentOwner'];
+        const updateKeys = Object.keys(updateData);
+
+        for (const key of updateKeys) {
+            if (!allowedUpdates.includes(key)) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Bạn chỉ có quyền cập nhật trạng thái đã bán cho sản phẩm này.'
+                });
+            }
+        }
+    } else if (!isFarmerOwner) {
+        return res.status(403).json({
+          success: false,
+          message: 'Bạn không có quyền chỉnh sửa sản phẩm này'
+        });
     }
 
-    // Không cho phép cập nhật một số trường
     delete updateData.blockchainId;
     delete updateData.farmerWallet;
-    delete updateData.currentOwner;
 
-    // Cập nhật sản phẩm
-    const updatedProduct = await Product.findOneAndUpdate(
-      { blockchainId: id },
+    const updatedProduct = await Product.findByIdAndUpdate(
+      mongoId, 
       { ...updateData, updatedAt: new Date() },
       { new: true, runValidators: true }
     );
@@ -301,13 +311,12 @@ const updateProduct = async (req, res) => {
 };
 
 // @desc    Xóa sản phẩm
-// @route   DELETE /api/products/:id
+// @route   DELETE /api/products/delete/:mongoId
 // @access  Private (Product owner)
 const deleteProduct = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const product = await Product.findOne({ blockchainId: id });
+    const { mongoId } = req.params;
+    const product = await Product.findById(mongoId); 
     
     if (!product) {
       return res.status(404).json({
@@ -330,7 +339,7 @@ const deleteProduct = async (req, res) => {
       });
     }
 
-    await Product.findOneAndDelete({ blockchainId: id });
+    await Product.findByIdAndDelete(mongoId);
 
     res.json({
       success: true,
@@ -385,6 +394,239 @@ const getProductRegions = async (req, res) => {
   }
 };
 
+// @desc    Lấy sản phẩm đã mua của Buyer
+// @route   GET /api/products/buyer/my-purchases
+// @access  Private (Buyer only)
+const getMyPurchases = async (req, res) => {
+  try {
+    // Chỉ 'buyer' mới được xem
+    if (req.user.role !== 'buyer') {
+      return res.status(403).json({
+        success: false,
+        message: 'Chỉ người mua mới có thể xem lịch sử mua hàng'
+      });
+    }
+
+    // Tìm tất cả sản phẩm có 'currentOwner' là ví của người mua
+    // Và 'status' không phải là 'available'
+    const products = await Product.find({ 
+      currentOwner: req.user.walletAddress,
+      status: { $ne: 'available' }
+    }).sort({ updatedAt: -1 }); // Sắp xếp theo ngày mua (cập nhật) mới nhất
+
+    res.json({
+      success: true,
+      data: products,
+      count: products.length
+    });
+
+  } catch (error) {
+    console.error('Get my purchases error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server: ' + error.message
+    });
+  }
+};
+
+// @desc    Buyer yêu cầu hoàn tiền
+// @route   POST /api/products/request-refund/:mongoId
+// @access  Private (Buyer only)
+const requestRefund = async (req, res) => {
+  try {
+    const { mongoId } = req.params;
+    const { reason } = req.body;
+
+    if (!reason) {
+      return res.status(400).json({ success: false, message: 'Lý do là bắt buộc' });
+    }
+
+    const product = await Product.findById(mongoId);
+
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
+    }
+
+    // Kiểm tra chính chủ (chỉ buyer sở hữu mới được yêu cầu)
+    if (product.currentOwner !== req.user.walletAddress) {
+      return res.status(403).json({ success: false, message: 'Bạn không sở hữu sản phẩm này' });
+    }
+
+    // Chỉ cho phép yêu cầu khi status là 'sold'
+    if (product.status !== 'sold') {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Không thể yêu cầu hoàn tiền cho sản phẩm có trạng thái "${product.status}"` 
+      });
+    }
+
+    // Cập nhật sản phẩm
+    product.status = 'refund-requested';
+    product.refundReason = reason;
+    await product.save();
+
+    res.json({
+      success: true,
+      message: 'Yêu cầu hoàn tiền đã được gửi',
+      data: product
+    });
+
+  } catch (error) {
+    console.error('Request refund error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server: ' + error.message
+    });
+  }
+};
+
+// @desc    Farmer chấp nhận hoàn tiền
+// @route   POST /api/products/approve-refund/:mongoId
+// @access  Private (Farmer only)
+const approveRefund = async (req, res) => {
+  try {
+    const { mongoId } = req.params;
+    const product = await Product.findById(mongoId);
+
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
+    }
+
+    // Kiểm tra chính chủ (chỉ farmer tạo ra mới được chấp nhận)
+    if (product.farmerWallet !== req.user.walletAddress) {
+      return res.status(403).json({ success: false, message: 'Bạn không phải người bán của sản phẩm này' });
+    }
+
+    // Chỉ cho phép chấp nhận khi status là 'refund-requested'
+    if (product.status !== 'refund-requested') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Sản phẩm này không đang trong trạng thái yêu cầu hoàn tiền' 
+           });
+    }
+
+    // Cập nhật sản phẩm
+    product.status = 'refunded';
+    // (Lưu ý: Farmer phải tự chuyển ETH trả lại thủ công)
+    await product.save();
+
+    res.json({
+      success: true,
+      message: 'Đã chấp nhận hoàn tiền (tượng trưng)',
+      data: product
+    });
+
+  } catch (error) {
+    console.error('Approve refund error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server: ' + error.message
+    });
+  }
+};
+
+
+// [---- BẮT ĐẦU THÊM MỚI (LOGIC MUA TIỀN MẶT) ----]
+
+// @desc    Buyer yêu cầu mua tiền mặt
+// @route   POST /api/products/request-cash/:mongoId
+// @access  Private (Buyer only)
+const requestCashPurchase = async (req, res) => {
+  try {
+    const { mongoId } = req.params;
+    const product = await Product.findById(mongoId);
+
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
+    }
+
+    // Chỉ 'buyer' mới được mua
+    if (req.user.role !== 'buyer') {
+        return res.status(403).json({ success: false, message: 'Chỉ người mua mới được mua sản phẩm' });
+    }
+
+    // Không thể mua sản phẩm của chính mình
+    if (product.farmerWallet === req.user.walletAddress) {
+        return res.status(400).json({ success: false, message: 'Bạn không thể mua sản phẩm của chính mình' });
+    }
+
+    // Chỉ cho phép yêu cầu khi status là 'available'
+    if (product.status !== 'available') {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Sản phẩm này không có sẵn (Trạng thái: ${product.status})` 
+      });
+    }
+
+    // Cập nhật sản phẩm: Gán chủ sở hữu mới (người mua) và chờ xác nhận
+    product.status = 'cash-pending';
+    product.currentOwner = req.user.walletAddress; // Gán người mua làm chủ sở hữu (chờ xử lý)
+    await product.save();
+
+    res.json({
+      success: true,
+      message: 'Đã gửi yêu cầu mua tiền mặt. Chờ người bán xác nhận.',
+      data: product
+    });
+
+  } catch (error) {
+    console.error('Request cash purchase error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server: ' + error.message
+    });
+  }
+};
+
+// @desc    Farmer xác nhận đã nhận tiền mặt
+// @route   POST /api/products/confirm-cash/:mongoId
+// @access  Private (Farmer only)
+const confirmCashPurchase = async (req, res) => {
+  try {
+    const { mongoId } = req.params;
+    const product = await Product.findById(mongoId);
+
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
+    }
+
+    // Kiểm tra chính chủ (chỉ farmer tạo ra mới được chấp nhận)
+    if (product.farmerWallet !== req.user.walletAddress) {
+      return res.status(403).json({ success: false, message: 'Bạn không phải người bán của sản phẩm này' });
+    }
+
+    // Chỉ cho phép chấp nhận khi status là 'cash-pending'
+    if (product.status !== 'cash-pending') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Sản phẩm này không đang chờ thanh toán tiền mặt' 
+      });
+    }
+
+    // Cập nhật sản phẩm
+    product.status = 'sold';
+    product.isSold = true;
+    // currentOwner đã được gán khi buyer yêu cầu
+    await product.save();
+
+    res.json({
+      success: true,
+      message: 'Đã xác nhận thanh toán tiền mặt và chuyển hàng.',
+      data: product
+    });
+
+  } catch (error) {
+    console.error('Confirm cash purchase error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi server: ' + error.message
+    });
+  }
+};
+
+// [---- KẾT THÚC THÊM MỚI ----]
+
+
 module.exports = {
   getProducts,
   getProduct,
@@ -393,5 +635,12 @@ module.exports = {
   updateProduct,
   deleteProduct,
   getProductTypes,
-  getProductRegions
+  getProductRegions,
+  // Hoàn tiền
+  getMyPurchases,
+  requestRefund,
+  approveRefund,
+  // Mua tiền mặt
+  requestCashPurchase,
+  confirmCashPurchase
 };

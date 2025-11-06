@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import Web3 from 'web3';
 
 const Web3Context = createContext();
@@ -11,6 +11,211 @@ export const useWeb3 = () => {
   return context;
 };
 
+// Contract ABI (Đã thêm updateProductPrice)
+const contractABI = [
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_productId",
+        "type": "uint256"
+      }
+    ],
+    "name": "buyProduct",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_productId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getProduct",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "productType",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "harvestDate",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "region",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "farmName",
+        "type": "string"
+      },
+      {
+        "internalType": "address",
+        "name": "farmer",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "owner",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "price",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bool",
+        "name": "isOrganic",
+        "type": "bool"
+      },
+      {
+        "internalType": "bool",
+        "name": "isSold",
+        "type": "bool"
+      },
+      {
+        "internalType": "uint256",
+        "name": "createdAt",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "productCount",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "_name",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "_productType",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_harvestDate",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "_region",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "_farmName",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_price",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bool",
+        "name": "_isOrganic",
+        "type": "bool"
+      }
+    ],
+    "name": "registerProduct",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "_name",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "_role",
+        "type": "string"
+      }
+    ],
+    "name": "registerUser",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_productId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_newPrice",
+        "type": "uint256"
+      }
+    ],
+    "name": "updateProductPrice",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_user",
+        "type": "address"
+      }
+    ],
+    "name": "isUserRegistered",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+];
+
+// Contract Address - Ganache Local
+const contractAddress = '0xa9d588394C985f6DA11D4BDEF94AEBd557516267'; // <-- HÃY KIỂM TRA LẠI ĐỊA CHỈ NÀY SAU KHI DEPLOY
+
 export const Web3Provider = ({ children }) => {
   const [web3, setWeb3] = useState(null);
   const [account, setAccount] = useState('');
@@ -20,224 +225,8 @@ export const Web3Provider = ({ children }) => {
   const [networkId, setNetworkId] = useState(null);
   const [contract, setContract] = useState(null);
 
-  // Contract ABI
-  const contractABI = [
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "_productId",
-          "type": "uint256"
-        }
-      ],
-      "name": "buyProduct",
-      "outputs": [],
-      "stateMutability": "payable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "_productId",
-          "type": "uint256"
-        }
-      ],
-      "name": "getProduct",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "id",
-          "type": "uint256"
-        },
-        {
-          "internalType": "string",
-          "name": "name",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "productType",
-          "type": "string"
-        },
-        {
-          "internalType": "uint256",
-          "name": "harvestDate",
-          "type": "uint256"
-        },
-        {
-          "internalType": "string",
-          "name": "region",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "farmName",
-          "type": "string"
-        },
-        {
-          "internalType": "address",
-          "name": "farmer",
-          "type": "address"
-        },
-        {
-          "internalType": "address",
-          "name": "owner",
-          "type": "address"
-        },
-        {
-          "internalType": "uint256",
-          "name": "price",
-          "type": "uint256"
-        },
-        {
-          "internalType": "bool",
-          "name": "isOrganic",
-          "type": "bool"
-        },
-        {
-          "internalType": "bool",
-          "name": "isSold",
-          "type": "bool"
-        },
-        {
-          "internalType": "uint256",
-          "name": "createdAt",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "productCount",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "string",
-          "name": "_name",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "_productType",
-          "type": "string"
-        },
-        {
-          "internalType": "uint256",
-          "name": "_harvestDate",
-          "type": "uint256"
-        },
-        {
-          "internalType": "string",
-          "name": "_region",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "_farmName",
-          "type": "string"
-        },
-        {
-          "internalType": "uint256",
-          "name": "_price",
-          "type": "uint256"
-        },
-        {
-          "internalType": "bool",
-          "name": "_isOrganic",
-          "type": "bool"
-        }
-      ],
-      "name": "registerProduct",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "string",
-          "name": "_name",
-          "type": "string"
-        },
-        {
-          "internalType": "string",
-          "name": "_role",
-          "type": "string"
-        }
-      ],
-      "name": "registerUser",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "address",
-          "name": "_user",
-          "type": "address"
-        }
-      ],
-      "name": "isUserRegistered",
-      "outputs": [
-        {
-          "internalType": "bool",
-          "name": "",
-          "type": "bool"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    }
-  ];
-
-  // Contract Address - Ganache Local
-  const contractAddress = '0x7f9729D8c88BFAde7C16271812aA11056d9D1c84';
-
-  useEffect(() => {
-    initializeWeb3();
-  }, []);
-
-  const initializeWeb3 = async () => {
-    try {
-      if (typeof window.ethereum !== 'undefined') {
-        console.log('✅ MetaMask detected');
-        
-        const web3Instance = new Web3(window.ethereum);
-        setWeb3(web3Instance);
-        
-        // Initialize contract
-        const checksumAddress = web3Instance.utils.toChecksumAddress(contractAddress);
-        const contractInstance = new web3Instance.eth.Contract(contractABI, checksumAddress);
-        setContract(contractInstance);
-        
-        console.log('✅ Web3 & Contract initialized');
-        
-        // Check existing connection
-        await checkExistingConnection();
-      } else {
-        setError('⚠️ Vui lòng cài đặt MetaMask để sử dụng tính năng blockchain');
-      }
-    } catch (error) {
-      console.error('❌ Error initializing Web3:', error);
-      setError('Lỗi khởi tạo Web3: ' + error.message);
-    }
-  };
-
-  const checkExistingConnection = async () => {
+  // [SỬA 1] Dùng useCallback để ESLint không báo lỗi dependency
+  const checkExistingConnection = useCallback(async (web3Instance) => {
     try {
       if (typeof window.ethereum !== 'undefined') {
         const accounts = await window.ethereum.request({ method: 'eth_accounts' });
@@ -257,7 +246,38 @@ export const Web3Provider = ({ children }) => {
     } catch (error) {
       console.error('❌ Error checking existing connection:', error);
     }
-  };
+  }, []); // Hàm này không có dependency
+
+  // [SỬA 2] Sửa lỗi ESLint 'exhaustive-deps'
+  useEffect(() => {
+    const initializeWeb3 = async () => {
+      try {
+        if (typeof window.ethereum !== 'undefined') {
+          console.log('✅ MetaMask detected');
+          
+          const web3Instance = new Web3(window.ethereum);
+          setWeb3(web3Instance);
+          
+          // Initialize contract
+          const checksumAddress = web3Instance.utils.toChecksumAddress(contractAddress);
+          const contractInstance = new web3Instance.eth.Contract(contractABI, checksumAddress);
+          setContract(contractInstance);
+          
+          console.log('✅ Web3 & Contract initialized');
+          
+          // Check existing connection
+          await checkExistingConnection(web3Instance);
+        } else {
+          setError('⚠️ Vui lòng cài đặt MetaMask để sử dụng tính năng blockchain');
+        }
+      } catch (error) {
+        console.error('❌ Error initializing Web3:', error);
+        setError('Lỗi khởi tạo Web3: ' + error.message);
+      }
+    };
+
+    initializeWeb3();
+  }, [checkExistingConnection]); // Thêm dependency
 
   const connectWallet = async () => {
     try {
@@ -361,7 +381,7 @@ export const Web3Provider = ({ children }) => {
     }
   };
 
-  // 🎯 HÀM MUA HÀNG - ĐÃ FIX LỖI GAS FEE
+  // 🎯 HÀM MUA HÀNG
   const buyProductOnChain = async (productId, expectedPriceETH) => {
     try {
       console.log('🛒 [BUY] === BẮT ĐẦU QUY TRÌNH MUA HÀNG ===');
@@ -426,13 +446,12 @@ export const Web3Provider = ({ children }) => {
         throw new Error(`Không thể mua sản phẩm: ${productError.message}`);
       }
 
-      // 💰 KIỂM TRA SỐ DƯ - FIXED: Gas fee thực tế
+      // 💰 KIỂM TRA SỐ DƯ
       console.log('💰 [BUY] Đang kiểm tra số dư...');
       const balance = await web3.eth.getBalance(account);
       const balanceETH = web3.utils.fromWei(balance, 'ether');
       const productPriceETH = parseFloat(productDetails.price);
       
-      // 🎯 FIX: Gas fee thực tế chỉ ~0.002 ETH thay vì 0.2 ETH
       const estimatedGasFee = 0.002;
       const requiredAmount = productPriceETH + estimatedGasFee;
 
@@ -610,73 +629,73 @@ export const Web3Provider = ({ children }) => {
     };
   };
 
-// 🎯 HÀM ĐĂNG KÝ SẢN PHẨM - ĐÃ FIX LỖI SYNTAX
-const registerProductOnChain = async (productData) => {
-  try {
-    console.log('🌱 [REGISTER] Bắt đầu đăng ký sản phẩm');
+  // 🎯 HÀM ĐĂNG KÝ SẢN PHẨM
+  const registerProductOnChain = async (productData) => {
+    try {
+      console.log('🌱 [REGISTER] Bắt đầu đăng ký sản phẩm');
 
-    if (!isConnected) {
-      throw new Error('Vui lòng kết nối ví trước');
-    }
+      if (!isConnected) {
+        throw new Error('Vui lòng kết nối ví trước');
+      }
 
-    if (!web3 || !contract) {
-      throw new Error('Web3 hoặc contract chưa khởi tạo');
-    }
+      if (!web3 || !contract) {
+        throw new Error('Web3 hoặc contract chưa khởi tạo');
+      }
 
-    // Chuyển đổi dữ liệu
-    const priceInWei = web3.utils.toWei(productData.price.toString(), 'ether');
-    const harvestTimestamp = Math.floor(new Date(productData.harvestDate).getTime() / 1000);
+      // Chuyển đổi dữ liệu
+      const priceInWei = web3.utils.toWei(productData.price.toString(), 'ether');
+      const harvestTimestamp = Math.floor(new Date(productData.harvestDate).getTime() / 1000);
 
-    console.log('📦 [REGISTER] Dữ liệu sản phẩm:', {
-      name: productData.name,
-      type: productData.productType,
-      price: productData.price,
-      priceInWei: priceInWei,
-      harvestDate: harvestTimestamp
-    });
-
-    // Đăng ký user nếu chưa có
-    const isRegistered = await contract.methods.isUserRegistered(account).call();
-    if (!isRegistered) {
-      console.log('👤 [REGISTER] Đăng ký user mới...');
-      await contract.methods.registerUser("Nông dân", "farmer").send({
-        from: account,
-        gas: 300000
-      });
-    }
-
-    // Đăng ký sản phẩm
-    const transaction = await contract.methods
-      .registerProduct(
-        productData.name,
-        productData.productType,
-        harvestTimestamp,
-        productData.region,
-        productData.farmName || 'Nông trại',
-        priceInWei,
-        productData.isOrganic || false
-      )
-      .send({
-        from: account,
-        gas: 500000
+      console.log('📦 [REGISTER] Dữ liệu sản phẩm:', {
+        name: productData.name,
+        type: productData.productType,
+        price: productData.price,
+        priceInWei: priceInWei,
+        harvestDate: harvestTimestamp
       });
 
-    console.log('✅ [REGISTER] Đăng ký thành công:', transaction.transactionHash);
-    
-    return {
-      success: true,
-      transactionHash: transaction.transactionHash,
-      blockNumber: transaction.blockNumber
-    };
+      // Đăng ký user nếu chưa có
+      const isRegistered = await contract.methods.isUserRegistered(account).call();
+      if (!isRegistered) {
+        console.log('👤 [REGISTER] Đăng ký user mới...');
+        await contract.methods.registerUser("Nông dân", "farmer").send({
+          from: account,
+          gas: 300000
+        });
+      }
 
-  } catch (error) {
-    console.error('❌ [REGISTER] Lỗi đăng ký sản phẩm:', error);
-    return {
-      success: false,
-      error: analyzePurchaseError(error).userMessage
-    };
-  }
-};
+      // Đăng ký sản phẩm
+      const transaction = await contract.methods
+        .registerProduct(
+          productData.name,
+          productData.productType,
+          harvestTimestamp,
+          productData.region,
+          productData.farmName || 'Nông trại',
+          priceInWei,
+          productData.isOrganic || false
+        )
+        .send({
+          from: account,
+          gas: 500000
+        });
+
+      console.log('✅ [REGISTER] Đăng ký thành công:', transaction.transactionHash);
+      
+      return {
+        success: true,
+        transactionHash: transaction.transactionHash,
+        blockNumber: transaction.blockNumber
+      };
+
+    } catch (error) {
+      console.error('❌ [REGISTER] Lỗi đăng ký sản phẩm:', error);
+      return {
+        success: false,
+        error: analyzePurchaseError(error).userMessage
+      };
+    }
+  };
 
   // 🎯 HÀM LẤY THÔNG TIN SẢN PHẨM
   const getProductFromChain = async (productId) => {
@@ -750,6 +769,39 @@ const registerProductOnChain = async (productData) => {
     }
   };
 
+  // HÀM MỚI ĐỂ SỬA GIÁ
+  const updateProductPriceOnChain = async (productId, newPriceETH) => {
+    try {
+      console.log(`[UPDATE_PRICE] Bắt đầu cập nhật ID: ${productId} sang giá ${newPriceETH} ETH`);
+      if (!web3 || !contract) throw new Error('Web3 hoặc contract chưa khởi tạo');
+      if (!account) throw new Error('Chưa kết nối ví');
+
+      // Chuyển đổi ETH sang Wei
+      const newPriceWei = web3.utils.toWei(newPriceETH.toString(), 'ether');
+      console.log(`[UPDATE_PRICE] Giá mới (Wei): ${newPriceWei}`);
+
+      // Gửi giao dịch
+      const transaction = await contract.methods
+        .updateProductPrice(productId, newPriceWei)
+        .send({
+          from: account,
+          gas: 300000 
+        });
+      
+      console.log('✅ [UPDATE_PRICE] Giao dịch thành công:', transaction.transactionHash);
+      return { success: true, transactionHash: transaction.transactionHash };
+
+    } catch (error) {
+      console.error('❌ [UPDATE_PRICE] Lỗi:', error);
+      const errorAnalysis = analyzePurchaseError(error); // Tận dụng hàm phân tích lỗi
+      return {
+        success: false,
+        error: errorAnalysis.userMessage
+      };
+    }
+  };
+
+
   // 🎯 HÀM KIỂM TRA CONTRACT
   const checkContractDeployment = async () => {
     try {
@@ -801,6 +853,7 @@ const registerProductOnChain = async (productData) => {
     }
   }, []);
 
+  // Thêm hàm mới vào 'value'
   const value = {
     // State
     web3,
@@ -821,6 +874,7 @@ const registerProductOnChain = async (productData) => {
     buyProductOnChain,
     getProductFromChain,
     getProductCount,
+    updateProductPriceOnChain, // <-- HÀM MỚI CHO NÚT "SỬA"
     
     // Utility Functions
     getBalance,
