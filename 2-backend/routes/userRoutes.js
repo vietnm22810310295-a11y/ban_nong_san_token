@@ -1,93 +1,78 @@
 const express = require('express');
+const router = express.Router();
+
+// Import Middleware xác thực
+const { authMiddleware } = require('../middleware/authMiddleware');
+
+// Import các Controller
 const { 
   registerUser, 
   loginUser,
   getUserProfile, 
+  updateUserProfile, // [ĐÃ THÊM] Hàm cập nhật thông tin
   getUsers,
-  updateUserProfile,
   updateUserRole,
   toggleUserActive,
   getOverviewStats
 } = require('../controllers/userController');
-const { authMiddleware } = require('../middleware/authMiddleware');
-
-const router = express.Router();
 
 // ======================================
-// PUBLIC ROUTES (Không cần xác thực)
+// PUBLIC ROUTES (Ai cũng truy cập được)
 // ======================================
 
 /**
  * @route   POST /api/users/register
  * @desc    Đăng ký user mới
- * @access  Public
- * @body    { walletAddress, name, email, role, phone, address }
  */
 router.post('/register', registerUser);
 
 /**
  * @route   POST /api/users/login
- * @desc    Đăng nhập với wallet address
- * @access  Public
- * @body    { walletAddress }
+ * @desc    Đăng nhập (Wallet/Email)
  */
 router.post('/login', loginUser);
 
 // ======================================
-// PROTECTED ROUTES (Cần xác thực JWT)
+// PRIVATE ROUTES (Cần đăng nhập)
 // ======================================
 
 /**
  * @route   GET /api/users/profile
- * @desc    Lấy thông tin profile của user hiện tại
- * @access  Private
- * @header  Authorization: Bearer <token>
+ * @desc    Xem thông tin cá nhân
  */
 router.get('/profile', authMiddleware, getUserProfile);
 
 /**
  * @route   PUT /api/users/profile
- * @desc    Cập nhật thông tin profile của user hiện tại
- * @access  Private
- * @header  Authorization: Bearer <token>
- * @body    { name, email, phone, address }
+ * @desc    Cập nhật thông tin cá nhân (Tên, Email, SĐT)
  */
 router.put('/profile', authMiddleware, updateUserProfile);
 
+// ======================================
+// ADMIN ROUTES (Chỉ dành cho Admin)
+// ======================================
+
 /**
  * @route   GET /api/users
- * @desc    Lấy danh sách tất cả users (Chỉ Admin)
- * @access  Private (Admin only)
- * @header  Authorization: Bearer <token>
- * @query   { page, limit, role, search, isActive }
+ * @desc    Lấy danh sách tất cả users
  */
 router.get('/', authMiddleware, getUsers);
 
 /**
  * @route   GET /api/users/stats/overview
- * @desc    Lấy thống kê tổng quan hệ thống (Chỉ Admin)
- * @access  Private (Admin only)
- * @header  Authorization: Bearer <token>
+ * @desc    Thống kê hệ thống
  */
 router.get('/stats/overview', authMiddleware, getOverviewStats);
 
 /**
  * @route   PUT /api/users/:walletAddress/role
- * @desc    Cập nhật role của user (Chỉ Admin)
- * @access  Private (Admin only)
- * @header  Authorization: Bearer <token>
- * @param   :walletAddress - Địa chỉ ví của user cần update
- * @body    { role } - farmer, buyer, admin
+ * @desc    Thay đổi quyền hạn user
  */
 router.put('/:walletAddress/role', authMiddleware, updateUserRole);
 
 /**
  * @route   PUT /api/users/:walletAddress/active
- * @desc    Kích hoạt/vô hiệu hóa user (Chỉ Admin)
- * @access  Private (Admin only)
- * @header  Authorization: Bearer <token>
- * @param   :walletAddress - Địa chỉ ví của user cần update
- * @body    { isActive } - true/false
+ * @desc    Khóa/Mở khóa tài khoản
  */
 router.put('/:walletAddress/active', authMiddleware, toggleUserActive);
 

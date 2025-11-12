@@ -78,8 +78,8 @@ const RegisterModal = ({ isOpen, onClose, walletAddress, onRegisterSuccess }) =>
               onChange={(e) => setFormData({...formData, role: e.target.value})}
               className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-green-500 focus:border-green-500"
             >
-              <option value="farmer">👨‍🌾 Nông dân (Có thể đăng bán sản phẩm)</option>
-              <option value="buyer">🛒 Người mua (Chỉ có thể mua sản phẩm)</option>
+              <option value="farmer">Nông dân (Có thể đăng bán sản phẩm)</option>
+              <option value="buyer">Người mua (Chỉ có thể mua sản phẩm)</option>
             </select>
           </div>
 

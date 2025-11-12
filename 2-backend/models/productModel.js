@@ -47,9 +47,15 @@ const productSchema = new mongoose.Schema(
     },
     price: {
       type: Number,
-      required: [true, 'Vui lòng nhập giá'],
+      required: [true, 'Vui lòng nhập giá ETH'],
       min: [0, 'Giá không thể âm'],
       max: [1000000, 'Giá quá lớn']
+    },
+    // [THÊM MỚI] Giá VND (cho thanh toán VNPAY/Tiền mặt)
+    priceVND: {
+      type: Number,
+      required: [true, 'Vui lòng nhập giá VND'],
+      min: [1000, 'Giá VND tối thiểu là 1,000đ'], 
     },
     isOrganic: {
       type: Boolean,
@@ -77,7 +83,6 @@ const productSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      // [THÊM MỚI] Thêm 'cash-pending'
       enum: ['available', 'sold', 'pending', 'refund-requested', 'refunded', 'cash-pending'],
       default: 'available'
     },
@@ -94,7 +99,7 @@ const productSchema = new mongoose.Schema(
     unit: {
       type: String,
       default: 'kg',
-      enum: ['kg', 'tấn', 'tạ', 'bao', 'lô'] // 'lô' đã có từ trước
+      enum: ['kg', 'tấn', 'tạ', 'bao', 'lô']
     }
   },
   {

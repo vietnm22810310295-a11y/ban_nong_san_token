@@ -18,6 +18,8 @@ app.use(express.json());
 // Routes
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/products', require('./routes/productRoutes'));
+// [THÊM MỚI] Thêm route cho VNPAY
+app.use('/api/payment', require('./routes/paymentRoutes'));
 
 // Route chính
 app.get('/', (req, res) => {
@@ -27,7 +29,8 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     endpoints: {
       users: '/api/users',
-      products: '/api/products'
+      products: '/api/products',
+      payment: '/api/payment' // [THÊM MỚI]
     }
   });
 });
@@ -42,7 +45,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Xử lý lỗi 404 - SỬA DÒNG NÀY
+// Xử lý lỗi 404
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -67,7 +70,7 @@ app.listen(PORT, () => {
   console.log('=================================');
   console.log(`📍 Port: ${PORT}`);
   console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🗄️  Database: ${process.env.MONGODB_URI}`);
+  console.log(`🗄️  Database: Connected`); // Ẩn MONGODB_URI khỏi log cho an toàn
   console.log(`⚡ Server: http://localhost:${PORT}`);
   console.log('=================================');
 });

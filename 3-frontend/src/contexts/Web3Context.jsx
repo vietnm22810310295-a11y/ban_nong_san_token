@@ -214,7 +214,7 @@ const contractABI = [
 ];
 
 // Contract Address - Ganache Local
-const contractAddress = '0xa9d588394C985f6DA11D4BDEF94AEBd557516267'; // <-- HÃY KIỂM TRA LẠI ĐỊA CHỈ NÀY SAU KHI DEPLOY
+const contractAddress = '0x53f1Bc34e62f0c2DE7AE3853934a5B9502D8c81c'; // <-- HÃY KIỂM TRA LẠI ĐỊA CHỈ NÀY SAU KHI DEPLOY
 
 export const Web3Provider = ({ children }) => {
   const [web3, setWeb3] = useState(null);

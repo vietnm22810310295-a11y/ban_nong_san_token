@@ -163,7 +163,7 @@ const LoginPage = () => {
 
           {/* ----- CÁC LƯU Ý BÊN DƯỚI ----- */}
           <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-            <h4 className="text-sm font-medium text-blue-800 mb-2">💡 Lưu ý:</h4>
+            <h4 className="text-sm font-medium text-blue-800 mb-2">Lưu ý:</h4>
             <ul className="text-xs text-blue-700 space-y-1">
               <li>• Đảm bảo bạn đã cài đặt MetaMask</li>
               <li>• Kết nối với mạng Ganache Local</li>

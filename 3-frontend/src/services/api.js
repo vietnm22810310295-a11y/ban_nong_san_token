@@ -62,9 +62,16 @@ export const productAPI = {
   requestRefund: (mongoId, reason) => api.post(`/products/request-refund/${mongoId}`, { reason }),
   approveRefund: (mongoId) => api.post(`/products/approve-refund/${mongoId}`),
 
-  // [THÊM MỚI] API cho Mua tiền mặt
+  // API cho Mua tiền mặt
   requestCashPurchase: (mongoId) => api.post(`/products/request-cash/${mongoId}`),
   confirmCashPurchase: (mongoId) => api.post(`/products/confirm-cash/${mongoId}`),
+};
+
+// [SỬA] Payment API calls (VNPAY)
+export const paymentAPI = {
+  // Hàm này giờ đây nhận 3 tham số
+  createPaymentUrl: (amount, orderInfo, orderId) => 
+    api.post('/payment/create_payment_url', { amount, orderInfo, orderId }),
 };
 
 export default api;

@@ -36,7 +36,7 @@ const HomePage = () => {
               to={user?.role === 'farmer' ? '/farmer' : '/products'}
               className="inline-flex items-center px-6 py-3 border border-green-600 text-base font-medium rounded-md text-green-600 bg-white hover:bg-green-50"
             >
-              {user?.role === 'farmer' ? '👨‍🌾 Farmer Dashboard' : '🛒 Mua sắm'}
+              {user?.role === 'farmer' ? 'Farmer Dashboard' : '🛒 Mua sắm'}
             </Link>
           )}
         </div>
@@ -45,11 +45,11 @@ const HomePage = () => {
           <div className="mt-8">
             <div className="bg-green-50 border border-green-200 rounded-lg p-6 max-w-md mx-auto">
               <h3 className="text-lg font-medium text-green-800">
-                👋 Chào mừng trở lại, {user?.name || user?.walletAddress?.slice(0, 8)}!
+                Chào mừng trở lại, {user?.name || user?.walletAddress?.slice(0, 8)}!
               </h3>
               <p className="mt-2 text-green-600">
                 Vai trò: <strong>
-                  {user?.role === 'farmer' ? '👨‍🌾 Nông dân' : '🛒 Người mua'}
+                  {user?.role === 'farmer' ? 'Nông dân' : 'Người mua'}
                 </strong>
               </p>
             </div>

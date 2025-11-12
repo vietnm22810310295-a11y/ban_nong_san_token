@@ -150,7 +150,7 @@ const ProductsPage = () => {
         )}
         {product.isOrganic && (
           <span className="absolute top-2 right-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
-            🌱 Hữu cơ
+            Hữu cơ
           </span>
         )}
         {isSoldCard && (
@@ -177,21 +177,21 @@ const ProductsPage = () => {
 
         <div className="space-y-2 mb-4">
           <div className="flex items-center text-sm text-gray-600">
-            <span className="font-medium w-20">🏞️ Vùng:</span>
+            <span className="font-medium w-20">Vùng:</span>
             <span className="ml-2 truncate" title={product.region}>{product.region}</span>
           </div>
           <div className="flex items-center text-sm text-gray-600">
-            <span className="font-medium w-20">👨‍🌾 Nông trại:</span>
+            <span className="font-medium w-20">Nông trại:</span>
             <span className="ml-2 truncate" title={product.farmName}>{product.farmName || 'Không có'}</span>
           </div>
           <div className="flex items-center text-sm text-gray-600">
-            <span className="font-medium w-20">📅 Thu hoạch:</span>
+            <span className="font-medium w-20">Thu hoạch:</span>
             <span className="ml-2">
               {product.harvestDate ? new Date(product.harvestDate).toLocaleDateString('vi-VN') : 'Không có'}
             </span>
           </div>
           <div className="flex items-center text-sm text-gray-600">
-            <span className="font-medium w-20">📦 Số lượng:</span>
+            <span className="font-medium w-20">Số lượng:</span>
             <span className="ml-2">{product.quantity || 1} {product.unit || 'lô'}</span>
         </div>
         </div>
@@ -210,7 +210,7 @@ const ProductsPage = () => {
             to={`/products/${product.id}`}
             className="flex-1 text-center px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
           >
-            👁️ Chi tiết
+            Chi tiết
           </Link>
           
           {isAuthenticated && !product.isSold && (
@@ -218,7 +218,7 @@ const ProductsPage = () => {
               to={`/products/${product.id}`}
               className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center justify-center"
             >
-              🛒 Mua ngay
+              Mua ngay
             </Link>
           )}
           
@@ -227,7 +227,7 @@ const ProductsPage = () => {
               to={`/products/${product.id}`}
               className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center justify-center"
             >
-              🛒 Mua ngay
+              Mua ngay
             </Link>
           )}
         </div>
@@ -235,10 +235,10 @@ const ProductsPage = () => {
         {/* Product Metadata */}
         <div className="mt-3 pt-3 border-t border-gray-200">
           <p className="text-xs text-gray-500 truncate">
-            👨‍🌾 Người bán: {product.farmer?.slice(0, 8)}...{product.farmer?.slice(-6)}
+            Người bán: {product.farmer?.slice(0, 8)}...{product.farmer?.slice(-6)}
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            🆔 Blockchain ID: {product.id}
+            Blockchain ID: {product.id}
           </p>
         </div>
       </div>
@@ -261,14 +261,14 @@ const ProductsPage = () => {
       
       {/* --- Header --- */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">🛒 Marketplace</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Marketplace</h1>
         <p className="mt-2 text-gray-600">Khám phá các sản phẩm nông sản chất lượng từ nông dân</p>
         <div className="mt-4 flex items-center space-x-4 text-sm">
           <span className={`inline-flex items-center px-3 py-1 rounded-full ${isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-            {isConnected ? '✅ Đã kết nối MetaMask' : '❌ Chưa kết nối MetaMask'}
+            {isConnected ? 'Đã kết nối MetaMask' : 'Chưa kết nối MetaMask'}
           </span>
           <span className={`inline-flex items-center px-3 py-1 rounded-full ${isAuthenticated ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-           {isAuthenticated ? `✅ Đã đăng nhập (${user?.role || 'user'})` : '⚠️ Chưa đăng nhập'}
+           {isAuthenticated ? `Đã đăng nhập (${user?.role || 'user'})` : 'Chưa đăng nhập'}
           </span>
         </div>
       </div>
@@ -311,7 +311,7 @@ const ProductsPage = () => {
               {isAuthenticated && (
                 <div className="mt-3 pt-3 border-t border-purple-200">
                   <p className="text-xs text-purple-600">
-                    💡 Bạn có thể mua sản phẩm bằng số dư ETH trong ví
+                      Bạn có thể mua sản phẩm bằng số dư ETH trong ví
                     {user?.role && (
                       <span className="ml-2">(Role: {user.role})</span>
                     )}
@@ -323,7 +323,7 @@ const ProductsPage = () => {
 
           {/* 2. Thẻ Lọc */}
           <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">🔍 Lọc sản phẩm</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Lọc sản phẩm</h3>
             <div className="grid grid-cols-1 gap-4">
               {/* Search */}
               <div>
@@ -414,13 +414,13 @@ const ProductsPage = () => {
                   className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center justify-center transition-colors"
                   title="Áp dụng bộ lọc"
                 >
-                  {loading ? <LoadingSpinner size="small" /> : '🔍 Lọc'}
+                  {loading ? <LoadingSpinner size="small" /> : 'Lọc'}
                 </button>
                 <button
                   onClick={clearFilters}
                   className="w-full px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
                 >
-                  🗑️ Xóa lọc
+                  Xóa lọc
                 </button>
               </div>
             </div>

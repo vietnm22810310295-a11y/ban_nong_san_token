@@ -1,4 +1,6 @@
 const Product = require('../models/productModel');
+const User = require('../models/userModel'); // [MỚI] Import User để lấy email
+const { sendTransactionEmails } = require('../utils/emailService'); // [MỚI] Import dịch vụ gửi mail
 
 // @desc    Lấy tất cả sản phẩm với filter và pagination
 // @route   GET /api/products
@@ -13,7 +15,7 @@ const getProducts = async (req, res) => {
       organic,
       minPrice, 
       maxPrice,
-      status = '', // Đã sửa: Lấy TẤT CẢ
+      status = '', 
       search,
       sortBy = 'createdAt',
       sortOrder = 'desc'
@@ -21,7 +23,7 @@ const getProducts = async (req, res) => {
 
     // Tạo filter object
     const filter = {};
-    if (status) filter.status = status; // Chỉ filter nếu status được gửi lên
+    if (status) filter.status = status; 
     
     if (type && type !== 'all') filter.productType = type;
     if (region) filter.region = new RegExp(region, 'i');
@@ -48,7 +50,7 @@ const getProducts = async (req, res) => {
       .sort(sortOptions)
       .limit(limit * 1)
       .skip((page - 1) * limit)
-      .lean(); // Chuyển thành plain object
+      .lean(); 
 
     // Thêm virtual field
     const productsWithVirtual = products.map(product => ({
@@ -133,16 +135,16 @@ const createProduct = async (req, res) => {
       region,
       farmName,
       price,
+      priceVND, 
       isOrganic,
       images,
       certifications,
     } = req.body;
 
-    // Validation
-    if (!blockchainId || !name || !productType || !harvestDate || !region || !price) {
+    if (!blockchainId || !name || !productType || !harvestDate || !region || !price || !priceVND) {
       return res.status(400).json({
         success: false,
-        message: 'Thiếu thông tin bắt buộc: blockchainId, name, productType, harvestDate, region, price'
+        message: 'Thiếu thông tin bắt buộc: blockchainId, name, productType, harvestDate, region, price (ETH), và priceVND'
       });
     }
 
@@ -175,6 +177,7 @@ const createProduct = async (req, res) => {
       farmerWallet: req.user.walletAddress,
       currentOwner: req.user.walletAddress,
       price,
+      priceVND, 
       isOrganic: isOrganic || false,
       images: images || [],
       certifications: certifications || [],
@@ -236,7 +239,7 @@ const getFarmerProducts = async (req, res) => {
   }
 };
 
-// @desc    Cập nhật sản phẩm
+// @desc    Cập nhật sản phẩm (Có tích hợp gửi mail khi BÁN THÀNH CÔNG)
 // @route   PUT /api/products/update/:mongoId
 // @access  Private
 const updateProduct = async (req, res) => {
@@ -244,7 +247,6 @@ const updateProduct = async (req, res) => {
     const { mongoId } = req.params; 
     const updateData = req.body;
 
-    // Tìm sản phẩm bằng _id của MongoDB
     const product = await Product.findById(mongoId); 
     
     if (!product) {
@@ -260,7 +262,7 @@ const updateProduct = async (req, res) => {
         updateData.status === 'sold';
 
     if (isBuyerUpdatingStatus) {
-        const allowedUpdates = ['status', 'isSold', 'currentOwner'];
+        const allowedUpdates = ['status', 'isSold', 'currentOwner', 'txHash']; // Cho phép thêm txHash
         const updateKeys = Object.keys(updateData);
 
         for (const key of updateKeys) {
@@ -286,6 +288,27 @@ const updateProduct = async (req, res) => {
       { ...updateData, updatedAt: new Date() },
       { new: true, runValidators: true }
     );
+
+    // [MỚI] --- GỬI EMAIL NẾU GIAO DỊCH THÀNH CÔNG (BLOCKCHAIN) ---
+    if (updateData.status === 'sold') {
+        try {
+            // 1. Tìm Farmer (Người bán)
+            const farmer = await User.findOne({ walletAddress: updatedProduct.farmerWallet });
+            
+            // 2. Tìm Buyer (Người mua - lúc này đã là currentOwner)
+            const buyer = await User.findOne({ walletAddress: updatedProduct.currentOwner });
+
+            // 3. Gửi mail (Không await để tránh user phải đợi lâu)
+            sendTransactionEmails(buyer?.email, farmer?.email, {
+                name: updatedProduct.name,
+                price: updatedProduct.price,
+                txHash: updateData.txHash || 'Giao dịch Blockchain'
+            });
+        } catch (emailErr) {
+            console.error('Lỗi gửi mail trong updateProduct:', emailErr);
+        }
+    }
+    // ----------------------------------------------------------
 
     res.json({
       success: true,
@@ -399,7 +422,6 @@ const getProductRegions = async (req, res) => {
 // @access  Private (Buyer only)
 const getMyPurchases = async (req, res) => {
   try {
-    // Chỉ 'buyer' mới được xem
     if (req.user.role !== 'buyer') {
       return res.status(403).json({
         success: false,
@@ -407,12 +429,10 @@ const getMyPurchases = async (req, res) => {
       });
     }
 
-    // Tìm tất cả sản phẩm có 'currentOwner' là ví của người mua
-    // Và 'status' không phải là 'available'
     const products = await Product.find({ 
       currentOwner: req.user.walletAddress,
       status: { $ne: 'available' }
-    }).sort({ updatedAt: -1 }); // Sắp xếp theo ngày mua (cập nhật) mới nhất
+    }).sort({ updatedAt: -1 }); 
 
     res.json({
       success: true,
@@ -447,12 +467,10 @@ const requestRefund = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
     }
 
-    // Kiểm tra chính chủ (chỉ buyer sở hữu mới được yêu cầu)
     if (product.currentOwner !== req.user.walletAddress) {
       return res.status(403).json({ success: false, message: 'Bạn không sở hữu sản phẩm này' });
     }
 
-    // Chỉ cho phép yêu cầu khi status là 'sold'
     if (product.status !== 'sold') {
       return res.status(400).json({ 
         success: false, 
@@ -460,7 +478,6 @@ const requestRefund = async (req, res) => {
       });
     }
 
-    // Cập nhật sản phẩm
     product.status = 'refund-requested';
     product.refundReason = reason;
     await product.save();
@@ -492,12 +509,10 @@ const approveRefund = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
     }
 
-    // Kiểm tra chính chủ (chỉ farmer tạo ra mới được chấp nhận)
     if (product.farmerWallet !== req.user.walletAddress) {
       return res.status(403).json({ success: false, message: 'Bạn không phải người bán của sản phẩm này' });
     }
 
-    // Chỉ cho phép chấp nhận khi status là 'refund-requested'
     if (product.status !== 'refund-requested') {
       return res.status(400).json({ 
         success: false, 
@@ -505,9 +520,7 @@ const approveRefund = async (req, res) => {
            });
     }
 
-    // Cập nhật sản phẩm
     product.status = 'refunded';
-    // (Lưu ý: Farmer phải tự chuyển ETH trả lại thủ công)
     await product.save();
 
     res.json({
@@ -525,9 +538,6 @@ const approveRefund = async (req, res) => {
   }
 };
 
-
-// [---- BẮT ĐẦU THÊM MỚI (LOGIC MUA TIỀN MẶT) ----]
-
 // @desc    Buyer yêu cầu mua tiền mặt
 // @route   POST /api/products/request-cash/:mongoId
 // @access  Private (Buyer only)
@@ -540,17 +550,11 @@ const requestCashPurchase = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
     }
 
-    // Chỉ 'buyer' mới được mua
-    if (req.user.role !== 'buyer') {
-        return res.status(403).json({ success: false, message: 'Chỉ người mua mới được mua sản phẩm' });
-    }
-
     // Không thể mua sản phẩm của chính mình
     if (product.farmerWallet === req.user.walletAddress) {
         return res.status(400).json({ success: false, message: 'Bạn không thể mua sản phẩm của chính mình' });
     }
 
-    // Chỉ cho phép yêu cầu khi status là 'available'
     if (product.status !== 'available') {
       return res.status(400).json({ 
         success: false, 
@@ -558,9 +562,9 @@ const requestCashPurchase = async (req, res) => {
       });
     }
 
-    // Cập nhật sản phẩm: Gán chủ sở hữu mới (người mua) và chờ xác nhận
     product.status = 'cash-pending';
-    product.currentOwner = req.user.walletAddress; // Gán người mua làm chủ sở hữu (chờ xử lý)
+    product.buyer = req.user.id; // Lưu ID người mua
+    product.currentOwner = req.user.walletAddress; 
     await product.save();
 
     res.json({
@@ -578,7 +582,7 @@ const requestCashPurchase = async (req, res) => {
   }
 };
 
-// @desc    Farmer xác nhận đã nhận tiền mặt
+// @desc    Farmer xác nhận đã nhận tiền mặt (Có tích hợp gửi mail)
 // @route   POST /api/products/confirm-cash/:mongoId
 // @access  Private (Farmer only)
 const confirmCashPurchase = async (req, res) => {
@@ -590,12 +594,10 @@ const confirmCashPurchase = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
     }
 
-    // Kiểm tra chính chủ (chỉ farmer tạo ra mới được chấp nhận)
     if (product.farmerWallet !== req.user.walletAddress) {
       return res.status(403).json({ success: false, message: 'Bạn không phải người bán của sản phẩm này' });
     }
 
-    // Chỉ cho phép chấp nhận khi status là 'cash-pending'
     if (product.status !== 'cash-pending') {
       return res.status(400).json({ 
         success: false, 
@@ -603,11 +605,26 @@ const confirmCashPurchase = async (req, res) => {
       });
     }
 
-    // Cập nhật sản phẩm
     product.status = 'sold';
     product.isSold = true;
     // currentOwner đã được gán khi buyer yêu cầu
     await product.save();
+
+    // [MỚI] --- GỬI EMAIL THÔNG BÁO GIAO DỊCH TIỀN MẶT THÀNH CÔNG ---
+    try {
+        const farmer = await User.findOne({ walletAddress: req.user.walletAddress });
+        // product.buyer chứa _id của người mua
+        const buyer = await User.findById(product.buyer);
+
+        sendTransactionEmails(buyer?.email, farmer?.email, {
+            name: product.name,
+            price: product.price,
+            txHash: 'Giao dịch Tiền mặt trực tiếp'
+        });
+    } catch (emailErr) {
+        console.error('Lỗi gửi mail trong confirmCashPurchase:', emailErr);
+    }
+    // --------------------------------------------------------------
 
     res.json({
       success: true,
@@ -623,9 +640,6 @@ const confirmCashPurchase = async (req, res) => {
     });
   }
 };
-
-// [---- KẾT THÚC THÊM MỚI ----]
-
 
 module.exports = {
   getProducts,

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useWeb3 } from '../contexts/Web3Context';
 import { productAPI } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
+import ConfirmModal from '../components/ConfirmModal'; 
+import AlertModal from '../components/AlertModal'; 
 
 const FarmerDashboard = () => {
   const { isConnected, registerProductOnChain, account, web3, contract, getProductCount, updateProductPriceOnChain } = useWeb3(); 
@@ -9,9 +11,18 @@ const FarmerDashboard = () => {
   const [products, setProducts] = useState([]); 
   const [refundRequests, setRefundRequests] = useState([]); 
   const [activeTab, setActiveTab] = useState('myProducts'); 
-  
-  // [SỬA MỚI 1] Thêm state cho các yêu cầu tiền mặt
   const [cashPendingRequests, setCashPendingRequests] = useState([]);
+
+  // State cho ConfirmModal
+  const [productToRefund, setProductToRefund] = useState(null);
+  const [productToConfirmCash, setProductToConfirmCash] = useState(null);
+
+  // State cho AlertModal
+  const [alertInfo, setAlertInfo] = useState({
+    isOpen: false,
+    title: '',
+    message: ''
+  });
 
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -22,9 +33,10 @@ const FarmerDashboard = () => {
     available: 0,
     sold: 0,
     pending: 0, 
-    cashPending: 0 // [SỬA MỚI 1.1] Thêm stat cho tiền mặt
+    cashPending: 0
   });
 
+  // [SỬA VNPAY 1] Thêm priceVND vào state form
   const [formData, setFormData] = useState({
     name: '',
     productType: 'lúa',
@@ -32,12 +44,12 @@ const FarmerDashboard = () => {
     harvestDate: '',
     region: '',
     farmName: '',
-    price: '',
+    price: '', // Giá ETH
+    priceVND: '', // Giá VND
     isOrganic: false,
     image: ''
   });
 
-  // [SỬA MỚI 2] Cập nhật hàm fetch để lọc cả 2 loại yêu cầu
   const fetchMyProducts = useCallback(async () => {
     try {
       setLoading(true);
@@ -47,12 +59,8 @@ const FarmerDashboard = () => {
       
       const available = allProducts.filter(p => p.status === 'available').length;
       const sold = allProducts.filter(p => p.status === 'sold' || p.status === 'refunded').length;
-      
-      // Lọc yêu cầu hoàn tiền
       const pendingList = allProducts.filter(p => p.status === 'refund-requested');
       setRefundRequests(pendingList); 
-      
-      // Lọc yêu cầu tiền mặt
       const cashList = allProducts.filter(p => p.status === 'cash-pending');
       setCashPendingRequests(cashList);
 
@@ -61,7 +69,7 @@ const FarmerDashboard = () => {
         available, 
         sold, 
         pending: pendingList.length,
-        cashPending: cashList.length // Set stat mới
+        cashPending: cashList.length
       });
 
     } catch (error) {
@@ -79,41 +87,45 @@ const FarmerDashboard = () => {
     e.preventDefault();
     
     if (!isConnected) {
-      alert('Vui lòng kết nối MetaMask trước khi tạo sản phẩm');
+      setAlertInfo({ isOpen: true, title: "Lỗi kết nối", message: "Vui lòng kết nối MetaMask trước khi tạo sản phẩm." });
       return;
     }
 
     if (!web3 || !contract) {
-      alert('Lỗi: Web3 hoặc contract chưa khởi tạo. Vui lòng đợi vài giây và thử lại.');
+      setAlertInfo({ isOpen: true, title: "Lỗi", message: "Lỗi: Web3 hoặc contract chưa khởi tạo. Vui lòng đợi vài giây và thử lại." });
+      return;
+    }
+
+    // [SỬA VNPAY 2] Kiểm tra giá VND
+    if (!formData.priceVND || parseFloat(formData.priceVND) < 1000) {
+      setAlertInfo({ isOpen: true, title: "Lỗi", message: "Vui lòng nhập giá VND (tối thiểu 1,000 VND)." });
       return;
     }
 
     try {
       setBlockchainLoading(true);
 
-      // BƯỚC 1: LẤY ID MỚI TỪ BLOCKCHAIN
       const countResult = await getProductCount();
       if (!countResult.success) {
         throw new Error('Không thể lấy số lượng sản phẩm từ contract.');
       }
       const newProductId = countResult.count + 1;
 
-      // BƯỚC 2: Đăng ký lên Blockchain
       const blockchainResult = await registerProductOnChain(formData);
 
       if (!blockchainResult.success) {
         throw new Error(blockchainResult.error || 'Lỗi khi đăng ký trên blockchain');
       }
 
-      // BƯỚC 3: Lưu vào Database (Backend) VỚI ID ĐÚNG
+      // Spread ...formData sẽ tự động gửi priceVND
       await productAPI.createProduct({
         ...formData,
         blockchainId: newProductId, 
         images: formData.image ? [formData.image] : [] 
       });
 
-      // Thành công
       setShowCreateForm(false);
+      // [SỬA VNPAY 3] Reset priceVND
       setFormData({
         name: '',
         productType: 'lúa',
@@ -122,17 +134,18 @@ const FarmerDashboard = () => {
         region: '',
         farmName: '',
         price: '',
+        priceVND: '', // Reset
         isOrganic: false,
         image: ''
       });
       
-      fetchMyProducts(); // Tải lại danh sách sản phẩm
+      fetchMyProducts(); 
       
-      alert(`✅ Tạo sản phẩm (ID: ${newProductId}) thành công!`);
+      setAlertInfo({ isOpen: true, title: "Thành công", message: `Tạo sản phẩm (ID: ${newProductId}) thành công!` });
 
     } catch (error) {
       console.error('Error creating product:', error);
-      alert('❌ Lỗi khi tạo sản phẩm: ' + error.message);
+      setAlertInfo({ isOpen: true, title: "Lỗi khi tạo sản phẩm", message: error.message });
     } finally {
       setBlockchainLoading(false);
     }
@@ -146,13 +159,12 @@ const FarmerDashboard = () => {
     }));
   };
 
-  // Hàm "Xóa"
   const handleDelete = async (product) => {
     if (product.status === 'available') {
         const confirmDelete = window.confirm(`Bạn có chắc muốn xóa sản phẩm "${product.name}"?\n\n(Lưu ý: Hành động này chỉ xóa khỏi Database, không thể xóa khỏi Blockchain.)`);
         if (!confirmDelete) return;
     } else {
-        alert('Sản phẩm này đã bán hoặc đang xử lý, chỉ có thể xóa khỏi Database.');
+        setAlertInfo({ isOpen: true, title: "Thông báo", message: "Sản phẩm này đã bán hoặc đang xử lý, chỉ có thể xóa khỏi Database." });
         const confirmDelete = window.confirm(`Bạn có chắc muốn xóa sản phẩm "${product.name}" khỏi Database?`);
         if (!confirmDelete) return;
     }
@@ -160,90 +172,81 @@ const FarmerDashboard = () => {
     try {
       setLoading(true);
       await productAPI.deleteProduct(product._id);
-      alert('✅ Đã xóa sản phẩm khỏi Database thành công!');
+      setAlertInfo({ isOpen: true, title: "Thành công", message: "Đã xóa sản phẩm khỏi Database thành công!" });
       fetchMyProducts(); 
     } catch (error) {
       console.error('Error deleting product:', error);
-      alert('❌ Lỗi khi xóa sản phẩm: ' + error.message);
+      setAlertInfo({ isOpen: true, title: "Lỗi khi xóa", message: error.message });
     } finally {
       setLoading(false);
     }
   };
 
-  // Hàm "Chỉnh sửa"
   const handleEdit = async (product) => {
     if (product.isSold || product.status === 'sold' || product.status === 'refund-requested') {
-      alert('❌ Không thể chỉnh sửa sản phẩm đã bán hoặc đang chờ hoàn tiền.');
+      setAlertInfo({ isOpen: true, title: "Lỗi", message: "Không thể chỉnh sửa sản phẩm đã bán hoặc đang chờ hoàn tiền." });
       return;
     }
 
     const newPrice = window.prompt(`Nhập giá mới (ETH) cho sản phẩm "${product.name}":`, product.price);
 
     if (!newPrice || isNaN(parseFloat(newPrice)) || parseFloat(newPrice) <= 0) {
-      alert('Giá không hợp lệ. Vui lòng nhập một số lớn hơn 0.');
+      setAlertInfo({ isOpen: true, title: "Lỗi", message: "Giá không hợp lệ. Vui lòng nhập một số lớn hơn 0." });
       return;
     }
 
     try {
       setBlockchainLoading(true);
-      alert('Đang gửi giao dịch lên Blockchain... Vui lòng xác nhận trong MetaMask.');
+      setAlertInfo({ isOpen: true, title: "Đang xử lý", message: "Đang gửi giao dịch lên Blockchain... Vui lòng xác nhận trong MetaMask." });
 
-      // BƯỚC 1: Cập nhật Blockchain
       const blockchainResult = await updateProductPriceOnChain(product.blockchainId, newPrice);
       if (!blockchainResult.success) {
         throw new Error(blockchainResult.error || 'Lỗi cập nhật giá trên Blockchain');
       }
 
-      // BƯỚC 2: Cập nhật Database
-      alert('Blockchain thành công. Đang cập nhật Database...');
+      setAlertInfo({ isOpen: true, title: "Đang xử lý", message: "Blockchain thành công. Đang cập nhật Database..." });
       await productAPI.updateProduct(product._id, {
         price: parseFloat(newPrice)
       });
 
-      alert('✅ Cập nhật giá thành công!');
+      setAlertInfo({ isOpen: true, title: "Thành công", message: "Cập nhật giá thành công!" });
       fetchMyProducts(); 
 
     } catch (error) {
       console.error('Error updating price:', error);
-      alert('❌ Lỗi khi cập nhật giá: ' + error.message);
+      setAlertInfo({ isOpen: true, title: "Lỗi khi cập nhật", message: error.message });
     } finally {
       setBlockchainLoading(false);
     }
   };
 
-  // HÀM MỚI - Đồng ý hoàn tiền
   const handleApproveRefund = async (product) => {
-    const confirmApprove = window.confirm(`Bạn có chắc muốn CHẤP NHẬN hoàn tiền cho sản phẩm "${product.name}"?\n\nLý do của khách: "${product.refundReason}"\n\nLƯU Ý: Bạn phải TỰ THAO TÁC chuyển ETH trả lại cho người mua. Hành động này chỉ cập nhật trạng thái.`);
-    if (!confirmApprove) return;
-
     try {
-      setBlockchainLoading(true); // Dùng loading chung
+      setBlockchainLoading(true); 
       await productAPI.approveRefund(product._id);
-      alert('✅ Đã chấp nhận hoàn tiền. Trạng thái sản phẩm đã được cập nhật.');
-      fetchMyProducts(); // Tải lại tất cả danh sách
+      setAlertInfo({ isOpen: true, title: "Thành công", message: "Đã chấp nhận hoàn tiền. Trạng thái sản phẩm đã được cập nhật." });
+      fetchMyProducts(); 
     } catch (error) {
       console.error('Error approving refund:', error);
-      alert('❌ Lỗi: ' + (error.response?.data?.message || 'Thao tác thất bại'));
+      setAlertInfo({ isOpen: true, title: "Lỗi", message: error.response?.data?.message || 'Thao tác thất bại' });
     } finally {
       setBlockchainLoading(false);
+      setProductToRefund(null); 
     }
   };
 
-  // [SỬA MỚI 3] Thêm hàm xử lý xác nhận tiền mặt
   const handleConfirmCash = async (product) => {
-     const confirmCash = window.confirm(`XÁC NHẬN GIAO DỊCH TIỀN MẶT?\n\nSản phẩm: "${product.name}"\n\nBạn chắc chắn đã nhận được tiền mặt và chuyển hàng cho người mua?`);
-    if (!confirmCash) return;
-
     try {
       setBlockchainLoading(true); 
       await productAPI.confirmCashPurchase(product._id);
-      alert('✅ Đã xác nhận bán bằng tiền mặt thành công!');
-      fetchMyProducts(); // Tải lại
+      setAlertInfo({ isOpen: true, title: "Thành công", message: "Đã xác nhận bán bằng tiền mặt thành công!" });
+      fetchMyProducts(); 
     } catch (error) {
       console.error('Error confirming cash:', error);
-      alert('❌ Lỗi: ' + (error.response?.data?.message || 'Thao tác thất bại'));
+      setAlertInfo({ isOpen: true, title: "Lỗi", message: error.response?.data?.message || 'Thao tác thất bại' });
     } finally {
       setBlockchainLoading(false);
+      setProductToConfirmCash(null); 
     }
   };
 
@@ -258,7 +261,7 @@ const FarmerDashboard = () => {
 
   return (
     <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-      {/* Web3 Connection Status - [KHÔI PHỤC] */}
+      {/* Web3 Connection Status */}
       <div className={`p-4 rounded-lg mb-6 ${
         isConnected ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'
       }`}>
@@ -268,7 +271,7 @@ const FarmerDashboard = () => {
           }`}></div>
           <div>
             <p className="font-medium">
-              {isConnected ? '✅ Đã kết nối MetaMask' : '⚠️ Chưa kết nối MetaMask'}
+              {isConnected ? 'Đã kết nối MetaMask' : 'Chưa kết nối MetaMask'}
             </p>
             {isConnected && (
               <p className="text-sm text-gray-600 mt-1">
@@ -281,11 +284,11 @@ const FarmerDashboard = () => {
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">👨‍🌾 Farmer Dashboard</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Farmer Dashboard</h1>
         <p className="mt-2 text-gray-600">Quản lý sản phẩm nông sản của bạn</p>
       </div>
 
-      {/* [SỬA MỚI 4] Sửa lại Stats Cards (thêm 1 thẻ, đổi grid-cols-5) */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
         <div className="bg-white p-6 rounded-lg shadow-md border-l-4 border-green-500">
           <h3 className="text-lg font-semibold text-gray-900">Tổng sản phẩm</h3>
@@ -321,7 +324,7 @@ const FarmerDashboard = () => {
         </button>
       </div>
 
-      {/* Create Product Form (Modal) - [KHÔI PHỤC] */}
+      {/* Create Product Form (Modal) */}
       {showCreateForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -382,7 +385,22 @@ const FarmerDashboard = () => {
                     required
                   />
                 </div>
-                  <div>
+                {/* [SỬA VNPAY 4] Thêm ô nhập Giá VND */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Giá (VND) *</label>
+                  <input
+                    type="number"
+                    step="1000"
+                    min="1000"
+                    name="priceVND"
+                    value={formData.priceVND}
+                    onChange={handleInputChange}
+                    className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-green-500 focus:border-green-500"
+                    placeholder="Ví dụ: 50000"
+                    required
+                  />
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700">Ngày thu hoạch *</label>
                   <input
                     type="date"
@@ -412,10 +430,9 @@ const FarmerDashboard = () => {
                     value={formData.farmName}
                     onChange={handleInputChange}
                     className="mt-1 block w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-green-500 focus:border-green-500"
-                  />
+source         />
                 </div>
 
-                {/* Thêm ô 'Link ảnh' */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Link ảnh sản phẩm</label>
                   <input
@@ -455,236 +472,280 @@ const FarmerDashboard = () => {
                 <button
                   type="button"
                   onClick={() => setShowCreateForm(false)}
-                  disabled={blockchainLoading}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  disabled={blockchainLoading || !isConnected || !web3 || !contract}
-                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center"
-                >
-                  {blockchainLoading ? (
-                    <>
-                      <LoadingSpinner size="small" />
-                      <span className="ml-2">Đang xử lý...</span>
-                    </>
-                  ) : (
-                    'Tạo sản phẩm'
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            	    disabled={blockchainLoading}
+            	    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            	  >
+            	    Hủy
+            	  </button>
+            	  <button
+            	    type="submit"
+            	    disabled={blockchainLoading || !isConnected || !web3 || !contract}
+            	    className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center"
+            	  >
+            	    {blockchainLoading ? (
+            	      <>
+              	      <LoadingSpinner size="small" />
+              	      <span className="ml-2">Đang xử lý...</span>
+              	    </>
+            	    ) : (
+            	      'Tạo sản phẩm'
+            	   )}
+            	  </button>
+            	</div>
+          	</form>
+        	</div>
+      	</div>
+    	)}
 
-      {/* [SỬA MỚI 5] Thêm Tab (Yêu cầu tiền mặt) */}
-      <div className="mb-4 border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8" aria-label="Tabs">
-          <button
-            onClick={() => setActiveTab('myProducts')}
-            className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'myProducts'
-                ? 'border-green-500 text-green-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Sản phẩm của tôi
-          </button>
-          <button
-            onClick={() => setActiveTab('cashRequests')}
-            className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'cashRequests'
-                ? 'border-green-500 text-green-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Yêu cầu (Tiền mặt)
-              {stats.cashPending > 0 && (
-              <span className="ml-2 inline-block py-0.5 px-2.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                {stats.cashPending}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab('refundRequests')}
-            className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'refundRequests'
-                ? 'border-green-500 text-green-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Yêu cầu (Hoàn tiền)
-            {stats.pending > 0 && (
-              <span className="ml-2 inline-block py-0.5 px-2.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                {stats.pending}
-              </span>
-            )}
-          </button>
-        </nav>
-      </div>
+    	<div className="mb-4 border-b border-gray-200">
+      	<nav className="-mb-px flex space-x-8" aria-label="Tabs">
+        	<button
+          	onClick={() => setActiveTab('myProducts')}
+          	className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+            	activeTab === 'myProducts'
+              	? 'border-green-500 text-green-600'
+              	: 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          	}`}
+        	>
+          	Sản phẩm của tôi
+        	</button>
+        	<button
+          	onClick={() => setActiveTab('cashRequests')}
+          	className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+            	activeTab === 'cashRequests'
+              	? 'border-green-500 text-green-600'
+              	: 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          	}`}
+        	>
+          	Yêu cầu (Tiền mặt)
+          	{stats.cashPending > 0 && (
+            	<span className="ml-2 inline-block py-0.5 px-2.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              	{stats.cashPending}
+            	</span>
+          	)}
+        	</button>
+        	<button
+          	onClick={() => setActiveTab('refundRequests')}
+          	className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+            	activeTab === 'refundRequests'
+              	? 'border-green-500 text-green-600'
+              	: 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          	}`}
+        	>
+          	Yêu cầu (Hoàn tiền)
+          	{stats.pending > 0 && (
+            	<span className="ml-2 inline-block py-0.5 px-2.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+              	{stats.pending}
+            	</span>
+          	)}
+        	</button>
+      	</nav>
+    	</div>
 
-      {/* Hiển thị nội dung Tab */}
-      <div>
-        {/* Tab 1: Sản phẩm của tôi */}
-        {activeTab === 'myProducts' && (
-          <div className="bg-white rounded-lg shadow-md">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">Sản phẩm của tôi ({stats.total})</h3>
-            </div>
-            <div className="divide-y divide-gray-200">
-              {products.length === 0 ? (
-                <div className="px-6 py-8 text-center">
-                  <p className="text-gray-500">Bạn chưa có sản phẩm nào.</p>
-                </div>
-              ) : (
-                products.map((product) => (
-                  <div key={product._id} className="px-6 py-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <h4 className="text-lg font-medium text-gray-900">{product.name}</h4>
-                        <p className="text-sm text-gray-600">
-                          {product.productType} • {product.region} • {product.price} ETH
-                        </p>
-                        <div className="flex items-center space-x-2 mt-1">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            product.status === 'available' ? 'bg-green-100 text-green-800' :
-                            product.status === 'sold' ? 'bg-purple-100 text-purple-800' :
-                            product.status === 'cash-pending' ? 'bg-blue-100 text-blue-800' : // Thêm
-                            product.status === 'refund-requested' ? 'bg-yellow-100 text-yellow-800' :
-                            product.status === 'refunded' ? 'bg-red-100 text-red-800' : 
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {product.status === 'available' ? 'Đang bán' : 
-                             product.status === 'sold' ? 'Đã bán' : 
-                             product.status === 'cash-pending' ? 'Chờ tiền mặt' : // Thêm
-                             product.status === 'refund-requested' ? 'Chờ hoàn tiền' :
-                           product.status === 'refunded' ? 'Đã hoàn tiền' : 'Không rõ'}
-                          </span>
-                          {product.isOrganic && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              Hữu cơ
-                            </span>
-                          )}
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                            ID: {product.blockchainId}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex space-x-2">
-                        <button 
-                          onClick={() => handleEdit(product)}
-                          disabled={product.isSold || product.status === 'sold' || product.status === 'refund-requested' || product.status === 'cash-pending' || blockchainLoading}
-                          className="text-blue-600 hover:text-blue-700 text-sm font-medium disabled:text-gray-400 disabled:cursor-not-allowed"
-                        >
-                          Chỉnh sửa
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(product)}
-                          disabled={blockchainLoading}
-                          className="text-red-600 hover:text-red-700 text-sm font-medium disabled:text-gray-400 disabled:cursor-not-allowed"
-                        >
-                	        Xóa
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* [SỬA MỚI 6] Thêm nội dung Tab (Yêu cầu tiền mặt) */}
-        {activeTab === 'cashRequests' && (
-          <div className="bg-white rounded-lg shadow-md">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">Yêu cầu (Tiền mặt) ({stats.cashPending})</h3>
-            </div>
-            <div className="divide-y divide-gray-200">
-              {cashPendingRequests.length === 0 ? (
-                <div className="px-6 py-8 text-center">
-                  <p className="text-gray-500">Không có yêu cầu tiền mặt nào.</p>
-                </div>
-              ) : (
-                cashPendingRequests.map((product) => (
-                  <div key={product._id} className="px-6 py-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <h4 className="text-lg font-medium text-gray-900">{product.name}</h4>
-                        <p className="text-sm text-gray-600">
-                          {product.productType} • {product.price} ETH • ID: {product.blockchainId}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {/* 'buyer' được gán khi request, 'currentOwner' thì chưa */}
-                          Người mua: {product.buyer ? `${product.buyer.slice(0, 8)}...${product.buyer.slice(-6)}` : (product.currentOwner.slice(0, 8) + '...' + product.currentOwner.slice(-6))}
-                        </p>
-                      </div>
-                      <div className="flex space-x-2">
-                        <button 
-                          onClick={() => handleConfirmCash(product)}
-                          disabled={blockchainLoading}
-                          className="px-3 py-1 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 disabled:opacity-50"
-                        >
-                          ✅ Xác nhận đã nhận tiền
-                        </button>
+    	<div>
+      	{activeTab === 'myProducts' && (
+        	<div className="bg-white rounded-lg shadow-md">
+          	<div className="px-6 py-4 border-b border-gray-200">
+            	<h3 className="text-lg font-medium text-gray-900">Sản phẩm của tôi ({stats.total})</h3>
+          	</div>
+          	<div className="divide-y divide-gray-200">
+            	{products.length === 0 ? (
+              	<div className="px-6 py-8 text-center">
+                	<p className="text-gray-500">Bạn chưa có sản phẩm nào.</p>
               	</div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-        </div>
-        )}
+            	) : (
+              	products.map((product) => (
+                	<div key={product._id} className="px-6 py-4">
+                  	<div className="flex items-center justify-between">
+                    	<div className="flex-1">
+                      	<h4 className="text-lg font-medium text-gray-900">{product.name}</h4>
+                      	<p className="text-sm text-gray-600">
+                        	{product.productType} • {product.region} • {product.price} ETH
+                      	</p>
+                      	<div className="flex items-center space-x-2 mt-1">
+                        	<span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          	product.status === 'available' ? 'bg-green-100 text-green-800' :
+                          	product.status === 'sold' ? 'bg-purple-100 text-purple-800' :
+                          	product.status === 'cash-pending' ? 'bg-blue-100 text-blue-800' :
+                          	product.status === 'refund-requested' ? 'bg-yellow-100 text-yellow-800' :
+                          	product.status === 'refunded' ? 'bg-red-100 text-red-800' : 
+                          	'bg-gray-100 text-gray-800'
+                        	}`}>{product.status === 'available' ? 'Đang bán' : 
+                          	product.status === 'sold' ? 'Đã bán' : 
+                          	product.status === 'cash-pending' ? 'Chờ tiền mặt' :
+                          	product.status === 'refund-requested' ? 'Chờ hoàn tiền' :
+                          	product.status === 'refunded' ? 'Đã hoàn tiền' : 'Không rõ'}
+                        	</span>
+                        	{product.isOrganic && (
+                          	<span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            	Hữu cơ
+                          	</span>
+                        	)}
+                        	<span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          	ID: {product.blockchainId}
+                        	</span>
+                      	</div>
+                    	</div>
+                    	<div className="flex space-x-2">
+                      	<button 
+                        	onClick={() => handleEdit(product)}
+                        	disabled={product.isSold || product.status === 'sold' || product.status === 'refund-requested' || product.status === 'cash-pending' || blockchainLoading}
+                        	className="text-blue-600 hover:text-blue-700 text-sm font-medium disabled:text-gray-400 disabled:cursor-not-allowed"
+                      	>
+                        	Chỉnh sửa
+                      	</button>
+                      	<button 
+                        	onClick={() => handleDelete(product)}
+                        	disabled={blockchainLoading}
+                        	className="text-red-600 hover:text-red-700 text-sm font-medium disabled:text-gray-400 disabled:cursor-not-allowed"
+                      	>
+                        	Xóa
+                      	</button>
+                    	</div>
+                  	</div>
+              	</div>
+            	))
+          	)}
+        	</div>
+      	</div>
+      	)}
 
-        {/* Tab 2: Yêu cầu hoàn tiền */}
-        {activeTab === 'refundRequests' && (
-          <div className="bg-white rounded-lg shadow-md">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">Yêu cầu (Hoàn tiền) ({stats.pending})</h3>
-            </div>
-            <div className="divide-y divide-gray-200">
-              {refundRequests.length === 0 ? (
-                <div className="px-6 py-8 text-center">
-                  <p className="text-gray-500">Không có yêu cầu hoàn tiền nào.</p>
-                </div>
-              ) : (
-                refundRequests.map((product) => (
-                  <div key={product._id} className="px-6 py-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <h4 className="text-lg font-medium text-gray-900">{product.name}</h4>
-                        <p className="text-sm text-gray-600">
-                          {product.productType} • {product.price} ETH • ID: {product.blockchainId}
-                        </p>
-                        <p className="text-sm text-red-600 mt-2">
-                          <strong>Lý do của người mua:</strong> {product.refundReason || 'Không có lý do'}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Người mua: {product.currentOwner.slice(0, 8)}...{product.currentOwner.slice(-6)}
-                        </p>
-                      </div>
-                      <div className="flex space-x-2">
-                        <button 
-                          onClick={() => handleApproveRefund(product)}
-                          disabled={blockchainLoading}
-                          className="px-3 py-1 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 disabled:opacity-50"
-                        >
-                          Chấp nhận hoàn tiền
-                        </button>
-                      </div>
-                    </div>
-                </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      	{activeTab === 'cashRequests' && (
+        	<div className="bg-white rounded-lg shadow-md">
+          	<div className="px-6 py-4 border-b border-gray-200">
+            	<h3 className="text-lg font-medium text-gray-900">Yêu cầu (Tiền mặt) ({stats.cashPending})</h3>
+          	</div>
+          	<div className="divide-y divide-gray-200">
+            	{cashPendingRequests.length === 0 ? (
+              	<div className="px-6 py-8 text-center">
+                	<p className="text-gray-500">Không có yêu cầu tiền mặt nào.</p>
+              	</div>
+            	) : (
+              	cashPendingRequests.map((product) => (
+                	<div key={product._id} className="px-6 py-4">
+                  	<div className="flex items-center justify-between">
+                    	<div className="flex-1">
+                      	<h4 className="text-lg font-medium text-gray-900">{product.name}</h4>
+                      	<p className="text-sm text-gray-600">
+                        	{product.productType} • {product.price} ETH • ID: {product.blockchainId}
+                      	</p>
+                      	<p className="text-xs text-gray-500 mt-1">
+                        	Người mua: {product.buyer ? `${product.buyer.slice(0, 8)}...${product.buyer.slice(-6)}` : (product.currentOwner.slice(0, 8) + '...' + product.currentOwner.slice(-6))}
+                      	</p>
+                    	</div>
+                    	<div className="flex space-x-2">
+                      	<button 
+                        	onClick={() => setProductToConfirmCash(product)}
+                        	disabled={blockchainLoading}
+                        	className="px-3 py-1 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 disabled:opacity-50"
+                      	>
+                        	✅ Xác nhận đã nhận tiền
+                      	</button>
+                    	</div>
+                  	</div>
+              	</div>
+            	))
+          	)}
+        	</div>
+      	</div>
+      	)}
 
-    </div>
+      	{activeTab === 'refundRequests' && (
+        	<div className="bg-white rounded-lg shadow-md">
+          	<div className="px-6 py-4 border-b border-gray-200">
+            	<h3 className="text-lg font-medium text-gray-900">Yêu cầu (Hoàn tiền) ({stats.pending})</h3>
+          	</div>
+          	<div className="divide-y divide-gray-200">
+            	{refundRequests.length === 0 ? (
+              	<div className="px-6 py-8 text-center">
+                	<p className="text-gray-500">Không có yêu cầu hoàn tiền nào.</p>
+              	</div>
+            	) : (
+              	refundRequests.map((product) => (
+                	<div key={product._id} className="px-6 py-4">
+                  	<div className="flex items-center justify-between">
+                    	<div className="flex-1">
+                      	<h4 className="text-lg font-medium text-gray-900">{product.name}</h4>
+                      	<p className="text-sm text-gray-600">
+                        	{product.productType} • {product.price} ETH • ID: {product.blockchainId}
+                      	</p>
+                      	<p className="text-sm text-red-600 mt-2">
+                        	<strong>Lý do của người mua:</strong> {product.refundReason || 'Không có lý do'}
+                      	</p>
+                      	<p className="text-xs text-gray-500 mt-1">
+                        	Người mua: {product.currentOwner.slice(0, 8)}...{product.currentOwner.slice(-6)}
+                      	</p>
+                    	</div>
+                    	<div className="flex space-x-2">
+                      	<button 
+                        	onClick={() => setProductToRefund(product)}
+                        	disabled={blockchainLoading}
+                        	className="px-3 py-1 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 disabled:opacity-50"
+                      	>
+                        	Chấp nhận hoàn tiền
+                      	</button>
+                    	</div>
+              	  </div>
+            	  </div>
+            	))
+          	)}
+        	</div>
+      	</div>
+    	)}
+  	</div>
+
+  	<ConfirmModal
+      	isOpen={!!productToConfirmCash}
+      	onClose={() => setProductToConfirmCash(null)}
+      	onConfirm={() => handleConfirmCash(productToConfirmCash)}
+      	title="Xác nhận giao dịch tiền mặt?"
+      	confirmText="Đồng ý"
+      	confirmColor="bg-green-600"
+    	>
+      	<p>
+        	Sản phẩm: <strong className="font-semibold">"{productToConfirmCash?.name}"</strong>
+      	</p>
+      	<p className="mt-4">
+        	Bạn chắc chắn đã nhận được tiền mặt và chuyển hàng cho người mua?
+      	</p>
+  	</ConfirmModal>
+
+  	<ConfirmModal
+      	isOpen={!!productToRefund}
+      	onClose={() => setProductToRefund(null)}
+      	onConfirm={() => handleApproveRefund(productToRefund)}
+      	title="Chấp nhận hoàn tiền?"
+      	confirmText="Chấp nhận hoàn tiền"
+      	confirmColor="bg-green-600"
+    	>
+      	<p>
+        	Bạn có chắc muốn CHẤP NHẬN hoàn tiền cho sản phẩm 
+        	<strong className="font-semibold"> "{productToRefund?.name}"</strong>?
+      	</p>
+      	<p className="mt-2">
+        	Lý do của khách: 
+        	<em className="text-gray-600"> "{productToRefund?.refundReason || 'Không có lý do'}"</em>
+        	</p>
+      	<div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+        	<p className="text-sm font-semibold text-yellow-800">
+          	⚠️ LƯU Ý:
+        	</p>
+        	<p className="text-sm text-yellow-700">
+          	Bạn phải TỰ THAO TÁC chuyển ETH trả lại cho người mua. 
+          	Hành động này chỉ cập nhật trạng thái trên hệ thống.
+        	</p>
+    	</div>
+  	</ConfirmModal>
+
+  	<AlertModal
+      	isOpen={alertInfo.isOpen}
+      	onClose={() => setAlertInfo({ isOpen: false, title: '', message: '' })}
+      	title={alertInfo.title}
+  	>
+    	  <p>{alertInfo.message}</p>
+  	</AlertModal>
+
+  	</div>
   );
 };
 

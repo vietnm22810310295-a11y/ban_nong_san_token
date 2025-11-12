@@ -15,7 +15,7 @@ const userSchema = new mongoose.Schema({
   email: {
     type: String,
     unique: true,
-    sparse: true,
+    sparse: true, // Cho phép nhiều 'null' nhưng email phải là duy nhất
     trim: true,
     lowercase: true
   },
@@ -37,11 +37,10 @@ const userSchema = new mongoose.Schema({
     default: true
   }
 }, {
-  timestamps: true
+  timestamps: true // Tự động thêm createdAt và updatedAt
 });
 
-// CHỈ DÙNG 1 CÁCH TẠO INDEX - XÓA DÒNG NÀY NẾU ĐÃ CÓ "unique: true"
-// userSchema.index({ walletAddress: 1 }); // XÓA DÒNG NÀY
+// Index để tìm kiếm nhanh theo vai trò
 userSchema.index({ role: 1 });
 
 const User = mongoose.model('User', userSchema);
