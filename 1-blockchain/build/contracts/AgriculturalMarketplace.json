@@ -21463,12 +21463,12 @@
     "1337": {
       "events": {},
       "links": {},
-      "address": "0x3b30f1462b8Eb3ab004D02a2ad34293091889DAB",
-      "transactionHash": "0xcf4b7b6219170d14762749fe8f20ff5c28cfc1f780a16945c93c6dd8a24c34e2"
+      "address": "0x00b4E09e46afd33aC0DF6aFc27808d4198a0b041",
+      "transactionHash": "0x8fab934763369b1bb9fc6955b07d26e3c76f809d033bfd3979bf55a3cfacd66a"
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2025-11-13T00:00:56.799Z",
+  "updatedAt": "2025-11-13T02:28:09.317Z",
   "networkType": "ethereum",
   "devdoc": {
     "kind": "dev",

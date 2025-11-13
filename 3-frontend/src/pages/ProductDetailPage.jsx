@@ -1,10 +1,8 @@
-// src/pages/ProductDetailPage.jsx
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useWeb3 } from '../contexts/Web3Context';
 import { useAuth } from '../contexts/AuthContext';
-import { productAPI, paymentAPI } from '../services/api'; // [SỬA VNPAY 1] Import thêm paymentAPI
+import { productAPI, paymentAPI } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import AlertModal from '../components/AlertModal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -28,6 +26,7 @@ const ProductDetailPage = () => {
       setLoading(true);
       setProduct(null); 
       setError('');
+      // [LƯU Ý]: Hàm getProduct đã được sửa ở backend để chấp nhận cả mongoId/blockchainId
       const response = await productAPI.getProduct(id); 
       
       if (response.data.success) {
@@ -82,12 +81,19 @@ const ProductDetailPage = () => {
       const result = await buyProductOnChain(product.blockchainId, product.price);
       
       if (result.success) {
+        // 1. CẬP NHẬT TRẠNG THÁI TRÊN BACKEND
         await productAPI.updateProduct(product._id, {
             status: 'sold',
             isSold: true,
-            currentOwner: account 
+            currentOwner: account,
+            txHash: result.txHash // Gửi hash giao dịch lên backend
         });
 
+        // 2. [FIX QUAN TRỌNG] REFRESH DỮ LIỆU CỦA TRANG HIỆN TẠI
+        // Đảm bảo trạng thái chuyển thành 'Đã bán' và xóa khỏi danh sách available của Marketplace
+        await fetchProduct(); 
+
+        // 3. CHUYỂN HƯỚNG
         navigate('/invoice', { 
           state: { 
             orderData: {
@@ -95,8 +101,8 @@ const ProductDetailPage = () => {
               name: product.name,
               productType: product.productType,
               region: product.region,
-              price: product.price, // Giá ETH
-                priceVND: product.priceVND, // [SỬA LOGIC] Gửi cả giá VND
+              price: product.price,
+              priceVND: product.priceVND, // Gửi cả giá VND
               image: product.images?.[0] || '',
               seller: product.farmerWallet,
               buyer: account,
@@ -123,7 +129,8 @@ const ProductDetailPage = () => {
       setAlertInfo({ isOpen: true, title: "Lỗi", message: "Vui lòng đăng nhập để mua hàng." });
       return;
     }
-    if (product.farmerWallet.toLowerCase() === account.toLowerCase()) {
+    // Sử dụng user?.walletAddress vì account có thể null nếu không kết nối MetaMask (chỉ đăng nhập qua auth)
+    if (product.farmerWallet.toLowerCase() === user?.walletAddress.toLowerCase()) {
       setAlertInfo({ isOpen: true, title: "Lỗi", message: "Bạn không thể mua sản phẩm của chính mình." });
       return;
     }
@@ -136,6 +143,10 @@ const ProductDetailPage = () => {
     try {
       await productAPI.requestCashPurchase(product._id); 
       
+      // [FIX QUAN TRỌNG] REFRESH DỮ LIỆU SAU KHI GỬI REQUEST
+      // Đảm bảo trạng thái sản phẩm chuyển thành 'Chờ xử lý' (cash-pending)
+      await fetchProduct(); 
+      
       navigate('/invoice', { 
         state: { 
           orderData: {
@@ -143,8 +154,8 @@ const ProductDetailPage = () => {
             name: product.name,
             productType: product.productType,
             region: product.region,
-            price: product.price, // Giá ETH
-              priceVND: product.priceVND, // [SỬA LOGIC] Gửi cả giá VND
+            price: product.price,
+            priceVND: product.priceVND, // Gửi cả giá VND
             image: product.images?.[0] || '',
             seller: product.farmerWallet,
             buyer: user?.walletAddress || 'Bạn',
@@ -172,8 +183,8 @@ const ProductDetailPage = () => {
     const blockchainId = product.blockchainId;
 
     if (!amountInVND || amountInVND < 1000) {
-        setAlertInfo({ isOpen: true, title: "Lỗi", message: "Sản phẩm này không hỗ trợ thanh toán VNPAY hoặc giá quá nhỏ (dưới 1,000 VND)." });
-        return;
+      setAlertInfo({ isOpen: true, title: "Lỗi", message: "Sản phẩm này không hỗ trợ thanh toán VNPAY hoặc giá quá nhỏ (dưới 1,000 VND)." });
+      return;
     }
     if (!blockchainId) {
       setAlertInfo({ isOpen: true, title: "Lỗi", message: "Không tìm thấy Blockchain ID của sản phẩm." });
@@ -183,10 +194,19 @@ const ProductDetailPage = () => {
     setPurchasing(true); 
     try {
       const orderInfo = `Thanh toan cho san pham ${product.name} (ID: ${blockchainId})`;
-      const response = await paymentAPI.createPaymentUrl(amountInVND, orderInfo, blockchainId);
+      
+      // Lấy URL từ biến môi trường hoặc hardcode (như bạn đang dùng)
+      const VERCEL_URL = 'https://ban-nong-san-token.vercel.app'; 
+      
+      const response = await paymentAPI.createPaymentUrl({
+        amount: amountInVND, 
+        orderInfo: orderInfo, 
+        orderId: blockchainId,
+        vnp_ReturnUrl: `${VERCEL_URL}/vnpay-return`
+      });
       
       if (response.data.success) {
-        // Lưu dữ liệu vào sessionStorage
+        // LƯU DỮ LIỆU VÀO SESSIONSTORAGE
         const orderData = {
           productId: product._id,
           name: product.name,
@@ -254,7 +274,7 @@ const ProductDetailPage = () => {
     product.status === 'sold' ? 'bg-gray-100 text-gray-800' :
     product.status === 'cash-pending' ? 'bg-blue-100 text-blue-800' : 
     product.status === 'refund-requested' ? 'bg-yellow-100 text-yellow-800' :
-    'bg-red-100 text-red-800';
+                   'bg-red-100 text-red-800';
 
   return (
     <>
@@ -277,7 +297,7 @@ const ProductDetailPage = () => {
               <p className="text-yellow-800">
                 Kết nối MetaMask để thanh toán bằng ETH
               </p>
-            </div>
+          </div>
           </div>
         )}
 
@@ -300,7 +320,6 @@ const ProductDetailPage = () => {
               </div>
               <div className="mt-4 md:mt-0 text-right">
                 <div className="text-3xl font-bold">{parseFloat(product.price).toFixed(3)} ETH</div>
-                {/* [SỬA VNPAY] Hiển thị thêm giá VND nếu có */}
                 {product.priceVND && (
                   <div className="text-lg font-medium text-green-100">
                     ({new Intl.NumberFormat('vi-VN').format(product.priceVND)} VNĐ)
@@ -335,10 +354,10 @@ const ProductDetailPage = () => {
 
             {/* Description */}
             <div className="mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">📝 Mô tả sản phẩm</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">📝 Mô tả sản phẩm</h3>
               <p className="text-gray-700 bg-gray-50 p-4 rounded-lg">
                 {product.description || 'Sản phẩm nông sản chất lượng cao từ nông trại.'}
-            </p>
+              </p>
             </div>
 
             {/* Product Details Grid */}
@@ -381,11 +400,11 @@ const ProductDetailPage = () => {
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Hữu cơ:</span>
+                  <span className="text-gray-600">Hữu cơ:</span>
                     <span className="font-medium">{product.isOrganic ? '✅ Có' : '❌ Không'}</span>
                   </div>
                   <div className="flex justify-between">
-                  <span className="text-gray-600">Blockchain ID:</span>
+                    <span className="text-gray-600">Blockchain ID:</span>
                     <span className="font-medium">{product.blockchainId}</span>
                   </div>
                 </div>
@@ -398,7 +417,7 @@ const ProductDetailPage = () => {
                 <h3 className="text-lg font-semibold text-gray-900 mb-3">👨‍🌾 Thông tin người bán</h3>
                 <div className="text-sm">
                   <p className="text-gray-600 break-all">
-                    <strong>Ví nông dân:</strong><br />
+                  <strong>Ví nông dân:</strong><br />
                     {product.farmerWallet}
                   </p>
                 </div>
@@ -425,94 +444,94 @@ const ProductDetailPage = () => {
                       onClick={handlePurchase}
                       disabled={purchasing || !isConnected || !isAuthenticated}
                       className="flex flex-col items-center justify-center p-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg font-medium text-lg transition duration-200"
-          	  >
-          	        {purchasing ? (
-                      	<>
-                        	<LoadingSpinner size="small" />
-                        	<span className="ml-2">Đang xử lý...</span>
-                      	</>
-                    	) : (
-                      	<>
-                        	<span>🛒 Thanh toán bằng ETH</span>
-                        	<span className="text-sm font-normal text-green-100">{parseFloat(product.price).toFixed(3)} ETH</span>
-                      	</>
-                    	)}
-                  	</button>
+                    >
+                      {purchasing ? (
+                        <>
+                          <LoadingSpinner size="small" />
+                          <span className="ml-2">Đang xử lý...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>🛒 Thanh toán bằng ETH</span>
+                          <span className="text-sm font-normal text-green-100">{parseFloat(product.price).toFixed(3)} ETH</span>
+                        </>
+                      )}
+                    </button>
 
-                  	{/* Nút 2: Tiền mặt */}
-                  	<button 
-                    	onClick={handleCashRequest}
-                    	disabled={purchasing || !isAuthenticated}
-                  	 	className="flex flex-col items-center justify-center p-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-medium text-lg transition duration-200"
-                  	>
-                    	<span>💵 Yêu cầu Tiền mặt</span>
-                    	<span className="text-sm font-normal text-blue-100">Chờ xác nhận</span>
-                  	</button>
+                    {/* Nút 2: Tiền mặt */}
+                    <button 
+                      onClick={handleCashRequest}
+                      disabled={purchasing || !isAuthenticated}
+                      className="flex flex-col items-center justify-center p-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-medium text-lg transition duration-200"
+                    >
+                      <span>💵 Yêu cầu Tiền mặt</span>
+                      <span className="text-sm font-normal text-blue-100">Chờ xác nhận</span>
+                    </button>
 
-                  	{/* Nút VNPAY */}
-                  	<button 
-                    	onClick={handleVnPayRequest}
-                    	disabled={purchasing || !isAuthenticated || !product.priceVND}
-                    	className="flex flex-col items-center justify-center p-4 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white rounded-lg font-medium text-lg transition duration-200"
-                  	>
-                    	<span>💳 Thanh toán VNPAY</span>
-                    	{product.priceVND ? (
-                      	<span className="text-sm font-normal text-red-100">
-                        	{new Intl.NumberFormat('vi-VN').format(product.priceVND)} VNĐ
-                      	</span>
-                    	) : (
-                    	<span className="text-sm font-normal text-red-100">Không hỗ trợ</span>
-                    	)}
-                  	</button>
-              </div>
-              	</>
-            	) : (
-              	<div className="w-full text-center py-4">
-                	<div className={`text-2xl mb-2 ${statusColor.replace('bg-', 'text-').replace('-100', '-600')}`}>
-                  	{statusText.split(' ')[0]}
-                	</div>
-                	<p className="text-gray-600 font-medium">{statusText}</p>
-              	{product.status === 'cash-pending' && (
-                  	<p className="text-gray-500 text-sm mt-1">Vui lòng chờ Người bán xác nhận đơn hàng này.</p>
-                	)}
-              	</div>
-            	)}
-          	</div>
-        	</div>
-      	</div>
-    	</div>
+                    {/* Nút 3: VNPAY */}
+                    <button 
+                      onClick={handleVnPayRequest}
+                      disabled={purchasing || !isAuthenticated || !product.priceVND}
+                      className="flex flex-col items-center justify-center p-4 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white rounded-lg font-medium text-lg transition duration-200"
+                    >
+                      <span>💳 Thanh toán VNPAY</span>
+                      {product.priceVND ? (
+                      <span className="text-sm font-normal text-red-100">
+                          {new Intl.NumberFormat('vi-VN').format(product.priceVND)} VNĐ
+                        </span>
+                      ) : (
+                        <span className="text-sm font-normal text-red-100">Không hỗ trợ</span>
+                      )}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="w-full text-center py-4">
+                  <div className={`text-2xl mb-2 ${statusColor.replace('bg-', 'text-').replace('-100', '-600')}`}>
+                  {statusText.split(' ')[0]}
+                  </div>
+                  <p className="text-gray-600 font-medium">{statusText}</p>
+                  {product.status === 'cash-pending' && (
+                    <p className="text-gray-500 text-sm mt-1">Vui lòng chờ Người bán xác nhận đơn hàng này.</p>
+               )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
 
-    	<AlertModal
-      	isOpen={alertInfo.isOpen}
-        	onClose={() => setAlertInfo({ isOpen: false, title: '', message: '' })}
-      	title={alertInfo.title}
-    	>
-      	<p style={{ whiteSpace: 'pre-line' }}>{alertInfo.message}</p> 
-    	</AlertModal>
+      <AlertModal
+        isOpen={alertInfo.isOpen}
+        onClose={() => setAlertInfo({ isOpen: false, title: '', message: '' })}
+        title={alertInfo.title}
+      >
+        <p style={{ whiteSpace: 'pre-line' }}>{alertInfo.message}</p> 
+      </AlertModal>
 
-    	<ConfirmModal
-      	isOpen={showConfirmBuy}
-      	onClose={() => setShowConfirmBuy(false)}
-      	onConfirm={onConfirmPurchase}
-      	title="Xác nhận mua hàng?"
-      	confirmText="Mua ngay"
-      	confirmColor="bg-green-600"
-    >
-      	<p>Bạn có chắc muốn mua sản phẩm <strong className="font-semibold">"{product?.name}"</strong> với giá <strong className="font-semibold">{product?.price} ETH</strong>?</p>
-    	</ConfirmModal>
+      <ConfirmModal
+        isOpen={showConfirmBuy}
+        onClose={() => setShowConfirmBuy(false)}
+        onConfirm={onConfirmPurchase}
+        title="Xác nhận mua hàng?"
+        confirmText="Mua ngay"
+        confirmColor="bg-green-600"
+       >
+        <p>Bạn có chắc muốn mua sản phẩm <strong className="font-semibold">"{product?.name}"</strong> với giá <strong className="font-semibold">{product?.price} ETH</strong>?</p>
+      </ConfirmModal>
 
-    	<ConfirmModal
-      	isOpen={showConfirmCash}
-      	onClose={() => setShowConfirmCash(false)}
-      	onConfirm={onConfirmCashRequest}
-      	title="Xác nhận mua tiền mặt?"
-      	confirmText="Gửi yêu cầu"
-      	confirmColor="bg-blue-600"
-  	>
-      	<p>Bạn muốn gửi yêu cầu mua sản phẩm <strong className="font-semibold">"{product?.name}"</strong> bằng tiền mặt?</p>
-      	<p className="text-sm text-gray-600 mt-2">Người bán sẽ liên hệ với bạn qua thông tin (email/SĐT) trên profile của bạn để xác nhận.</p>
-  	</ConfirmModal>
-  	</>
+      <ConfirmModal
+        isOpen={showConfirmCash}
+        onClose={() => setShowConfirmCash(false)}
+        onConfirm={onConfirmCashRequest}
+        title="Xác nhận mua tiền mặt?"
+        confirmText="Gửi yêu cầu"
+        confirmColor="bg-blue-600"
+      >
+        <p>Bạn muốn gửi yêu cầu mua sản phẩm <strong className="font-semibold">"{product?.name}"</strong> bằng tiền mặt?</p>
+         <p className="text-sm text-gray-600 mt-2">Người bán sẽ liên hệ với bạn qua thông tin (email/SĐT) trên profile của bạn để xác nhận.</p>
+      </ConfirmModal>
+    </>
   );
 };
 

@@ -6,7 +6,6 @@ import { useAuth } from '../contexts/AuthContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 const ProductsPage = () => {
-  // --- TOÀN BỘ LOGIC, STATE, VÀ HOOKS (KHÔNG THAY ĐỔI) ---
   const [availableProducts, setAvailableProducts] = useState([]);
   const [soldProducts, setSoldProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,84 +24,141 @@ const ProductsPage = () => {
   const { isConnected, account, web3, getProductFromChain, getProductCount, getBalance } = useWeb3();
   const { isAuthenticated, user } = useAuth();
 
-  // --- (Tất cả các hàm logic như loadProducts, loadBlockchainProducts, ... đều giữ nguyên) ---
-  const loadProducts = useCallback(async (currentFilters) => {
-    try {
-      setLoading(true);
-      setError('');
-      const apiResponse = await productAPI.getProducts({ 
-        ...currentFilters, 
-        status: '' 
-      });
-      const apiProducts = apiResponse.data.data;
-      const blockchainProducts = await loadBlockchainProducts(getProductCount, getProductFromChain);
-      
-      const combinedProducts = apiProducts.map(apiProduct => {
-        const blockchainProduct = blockchainProducts.find(bp => 
-          bp.id === apiProduct.blockchainId || bp.id === apiProduct.id
-        );
-        
-        const mergedProduct = {
-          ...apiProduct,
-          ...blockchainProduct,
-          isSold: blockchainProduct ? blockchainProduct.isSold : apiProduct.status === 'sold',
-          price: blockchainProduct ? blockchainProduct.price : apiProduct.price,
-          id: blockchainProduct ? blockchainProduct.id : apiProduct.blockchainId || apiProduct.id,
-          _id: apiProduct._id 
-        };
-        return mergedProduct;
-      });
-
-      const available = combinedProducts.filter(p => !p.isSold && p.status !== 'sold');
-      const sold = combinedProducts.filter(p => p.isSold || p.status === 'sold');
-
-      setAvailableProducts(available);
-      setSoldProducts(sold);
-    } catch (error) {
-      console.error('❌ [PRODUCTS] Error loading products:', error);
-      setError('Lỗi khi tải sản phẩm: ' + error.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [getProductCount, getProductFromChain]);
-
+  // --- 1. Hàm load data từ Blockchain ---
   const loadBlockchainProducts = useCallback(async (getProductCount, getProductFromChain) => {
     try {
+      // Kiểm tra nếu chưa kết nối Web3 thì bỏ qua
+      if (!web3) return [];
+
+      console.log('⛓️ [BLOCKCHAIN] Đang tải sản phẩm từ blockchain...');
+      
       const countResult = await getProductCount();
       if (!countResult.success) {
-        console.warn('⚠️ [BLOCKCHAIN] Không thể lấy số lượng sản phẩm');
+        console.warn('⚠️ [BLOCKCHAIN] Không thể lấy số lượng sản phẩm (có thể do chưa deploy contract hoặc sai mạng)');
         return [];
       }
+
       const totalProducts = countResult.count;
+      // console.log(`⛓️ [BLOCKCHAIN] Tổng sản phẩm trên blockchain: ${totalProducts}`);
+
       const productPromises = [];
       for (let i = 1; i <= totalProducts; i++) {
         productPromises.push(getProductFromChain(i));
       }
+
       const results = await Promise.all(productPromises);
       const successfulProducts = results
         .filter(result => result.success)
         .map(result => result.data);
-      return successfulProducts;
-    } catch (error) {
-      console.error('❌ [BLOCKCHAIN] Error loading blockchain products:', error);
-      return [];
-    }
-  }, []);
 
+      // console.log(`✅ [BLOCKCHAIN] Loaded ${successfulProducts.length} products from blockchain`);
+      return successfulProducts;
+
+    } catch (error) {
+      console.error('❌ [BLOCKCHAIN] Error loading blockchain products (Non-blocking):', error);
+      return []; // Trả về mảng rỗng để app không bị crash
+    }
+  }, [web3]); 
+
+// --- 2. Hàm load data chính (ĐÃ SỬA LỖI LỌC STATUS) ---
+const loadProducts = useCallback(async (currentFilters) => {
+    try {
+      setLoading(true);
+      setError('');
+      console.log('🔄 [PRODUCTS] Đang tải sản phẩm...');
+
+      // [FIX QUAN TRỌNG] Thêm status='all' vào filters để buộc Backend trả về
+      // TẤT CẢ sản phẩm (available, sold, pending...) cho việc phân loại ở Frontend
+      const filtersWithStatus = { 
+        ...currentFilters, 
+        status: 'all' 
+      };
+
+      // Gọi API Backend
+      const apiResponse = await productAPI.getProducts(filtersWithStatus);
+      
+      let apiProducts = [];
+
+      // Logic parse dữ liệu mềm dẻo (như đã sửa trước đó)
+      if (apiResponse.data && Array.isArray(apiResponse.data.data)) {
+        apiProducts = apiResponse.data.data;
+      } else if (apiResponse.data && Array.isArray(apiResponse.data)) {
+        apiProducts = apiResponse.data;
+      } else if (Array.isArray(apiResponse.data)) {
+        apiProducts = apiResponse.data;
+      } else if (Array.isArray(apiResponse)) {
+        apiProducts = apiResponse;
+      } else {
+        console.warn('⚠️ [API] Dữ liệu rỗng hoặc sai cấu trúc:', apiResponse);
+        apiProducts = []; 
+      }
+
+      console.log(`📦 [PRODUCTS] Tìm thấy ${apiProducts.length} sản phẩm từ API (bao gồm cả đã bán)`);
+
+      // Load blockchain data (song song hoặc tuần tự, ở đây dùng tuần tự để merge)
+      let blockchainProducts = [];
+      if (web3) {
+        try {
+           blockchainProducts = await loadBlockchainProducts(getProductCount, getProductFromChain);
+        } catch (bcError) {
+           console.warn("Bỏ qua lỗi blockchain khi merge");
+        }
+      }
+      
+      // Merge dữ liệu: Ưu tiên thông tin từ Blockchain (Real-time)
+      const combinedProducts = apiProducts.map(apiProduct => {
+        const blockchainProduct = blockchainProducts.find(bp => 
+          String(bp.id) === String(apiProduct.blockchainId) || String(bp.id) === String(apiProduct.id)
+        );
+        
+        return {
+          ...apiProduct,
+          ...(blockchainProduct || {}), // Ghi đè bằng dữ liệu blockchain nếu có
+          // Logic check đã bán: dùng isSold từ blockchain HOẶC status='sold' từ DB
+          isSold: blockchainProduct ? blockchainProduct.isSold : (apiProduct.status === 'sold'),
+          // Logic giá
+          price: blockchainProduct ? blockchainProduct.price : apiProduct.price,
+          // Logic ID
+          id: blockchainProduct ? blockchainProduct.id : (apiProduct.blockchainId || apiProduct.id),
+          _id: apiProduct._id // ID của MongoDB giữ nguyên để làm key
+        };
+      });
+
+      // Phân loại: Lọc ra hai danh sách
+      // Đang bán: CHƯA BÁN VÀ PHẢI LÀ 'available'
+      const available = combinedProducts.filter(p => !p.isSold && p.status === 'available');
+      // Đã bán: isSold = true HOẶC status = 'sold'
+      const sold = combinedProducts.filter(p => p.isSold || p.status === 'sold' || p.status === 'refunded');
+
+      setAvailableProducts(available);
+      setSoldProducts(sold);
+      
+    } catch (error) {
+      console.error('❌ [PRODUCTS] Error loading products:', error);
+      setError('Có lỗi khi tải danh sách sản phẩm. Vui lòng thử lại sau.');
+      setAvailableProducts([]);
+      setSoldProducts([]);
+    } finally {
+      setLoading(false);
+    }
+}, [getProductCount, getProductFromChain, loadBlockchainProducts, web3]);
+
+  // --- 3. Hàm load số dư ví ---
   const loadWalletBalance = useCallback(async () => {
     try {
       setBalanceLoading(true);
       const balanceResult = await getBalance();
       if (balanceResult.success) {
         setBalance(balanceResult.balance);
-      }
+      } 
     } catch (error) {
-      console.error('❌ [BALANCE] Error loading balance:', error);
+      console.error('❌ [BALANCE] Error:', error);
     } finally {
       setBalanceLoading(false);
     }
   }, [getBalance]);
 
+  // --- 4. Effects ---
   useEffect(() => {
     loadProducts(filters);
     if (isConnected && account && web3) { 
@@ -110,6 +166,7 @@ const ProductsPage = () => {
     }
   }, [isConnected, account, web3, loadProducts, filters, loadWalletBalance]);
 
+  // --- 5. Handlers ---
   const handleFilterChange = (key, value) => {
     setFilters(prevFilters => ({
       ...prevFilters,
@@ -134,7 +191,7 @@ const ProductsPage = () => {
     loadProducts(newFilters);
   };
 
-  // --- Component Card Sản phẩm (Đã khôi phục) ---
+  // --- 6. Component con: ProductCard ---
   const ProductCard = ({ product, isSoldCard = false }) => (
     <div key={product._id || product.id} className={`bg-white rounded-lg shadow-md overflow-hidden border border-gray-200 transition-shadow duration-300 ${isSoldCard ? 'opacity-70' : 'hover:shadow-lg'}`}>
       {/* Product Image */}
@@ -150,7 +207,7 @@ const ProductsPage = () => {
         )}
         {product.isOrganic && (
           <span className="absolute top-2 right-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
-            Hữu cơ
+            🌱 Hữu cơ
           </span>
         )}
         {isSoldCard && (
@@ -171,35 +228,36 @@ const ProductsPage = () => {
           </span>
         </div>
 
-        <p className="text-gray-600 text-sm mb-4 line-clamp-2 min-h-[2.5rem]">
+        {/* [FIX WARNING] Dùng div thay p để tránh lỗi nested block */}
+        <div className="text-gray-600 text-sm mb-4 line-clamp-2 min-h-[2.5rem]">
           {product.description || 'Sản phẩm nông sản chất lượng cao'}
-        </p>
+        </div>
 
         <div className="space-y-2 mb-4">
           <div className="flex items-center text-sm text-gray-600">
-            <span className="font-medium w-20">Vùng:</span>
+            <span className="font-medium w-20">🏞️ Vùng:</span>
             <span className="ml-2 truncate" title={product.region}>{product.region}</span>
           </div>
           <div className="flex items-center text-sm text-gray-600">
-            <span className="font-medium w-20">Nông trại:</span>
+            <span className="font-medium w-20">👨‍🌾 Nông trại:</span>
             <span className="ml-2 truncate" title={product.farmName}>{product.farmName || 'Không có'}</span>
           </div>
           <div className="flex items-center text-sm text-gray-600">
-            <span className="font-medium w-20">Thu hoạch:</span>
+            <span className="font-medium w-20">📅 Thu hoạch:</span>
             <span className="ml-2">
               {product.harvestDate ? new Date(product.harvestDate).toLocaleDateString('vi-VN') : 'Không có'}
             </span>
           </div>
           <div className="flex items-center text-sm text-gray-600">
-            <span className="font-medium w-20">Số lượng:</span>
+            <span className="font-medium w-20">📦 Số lượng:</span>
             <span className="ml-2">{product.quantity || 1} {product.unit || 'lô'}</span>
-        </div>
+          </div>
         </div>
 
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-2">
             <span className="text-2xl font-bold text-green-600">
-              {parseFloat(product.price).toFixed(4)} ETH
+              {product.price ? parseFloat(product.price).toFixed(4) : '0.0000'} ETH
             </span>
           </div>
         </div>
@@ -210,7 +268,7 @@ const ProductsPage = () => {
             to={`/products/${product.id}`}
             className="flex-1 text-center px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
           >
-            Chi tiết
+            👁️ Chi tiết
           </Link>
           
           {isAuthenticated && !product.isSold && (
@@ -218,7 +276,7 @@ const ProductsPage = () => {
               to={`/products/${product.id}`}
               className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center justify-center"
             >
-              Mua ngay
+              🛒 Mua ngay
             </Link>
           )}
           
@@ -227,7 +285,7 @@ const ProductsPage = () => {
               to={`/products/${product.id}`}
               className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center justify-center"
             >
-              Mua ngay
+              🛒 Mua ngay
             </Link>
           )}
         </div>
@@ -235,45 +293,35 @@ const ProductsPage = () => {
         {/* Product Metadata */}
         <div className="mt-3 pt-3 border-t border-gray-200">
           <p className="text-xs text-gray-500 truncate">
-            Người bán: {product.farmer?.slice(0, 8)}...{product.farmer?.slice(-6)}
+            👨‍🌾 Người bán: {product.farmer?.slice(0, 8)}...{product.farmer?.slice(-6)}
           </p>
+          {/* [FIX TYPO] Đã xóa chữ 's' thừa ở đây */}
           <p className="text-xs text-gray-500 mt-1">
-            Blockchain ID: {product.id}
+            🆔 Blockchain ID: {product.id}
           </p>
         </div>
       </div>
     </div>
   );
-  // --- HẾT PRODUCT CARD ---
 
-  // --- JSX Render chính (Bố cục 2 cột) ---
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <LoadingSpinner size="large" />
-        <span className="ml-3 text-gray-600">Đang tải sản phẩm...</span>
-      </div>
-    );
-  }
-  
+  // --- 7. Render Chính ---
   return (
     <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
       
       {/* --- Header --- */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Marketplace</h1>
+        <h1 className="text-3xl font-bold text-gray-900">🛒 Marketplace</h1>
         <p className="mt-2 text-gray-600">Khám phá các sản phẩm nông sản chất lượng từ nông dân</p>
         <div className="mt-4 flex items-center space-x-4 text-sm">
           <span className={`inline-flex items-center px-3 py-1 rounded-full ${isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-            {isConnected ? 'Đã kết nối MetaMask' : 'Chưa kết nối MetaMask'}
+            {isConnected ? '✅ Đã kết nối MetaMask' : '❌ Chưa kết nối MetaMask'}
           </span>
           <span className={`inline-flex items-center px-3 py-1 rounded-full ${isAuthenticated ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-           {isAuthenticated ? `Đã đăng nhập (${user?.role || 'user'})` : 'Chưa đăng nhập'}
+            {isAuthenticated ? `✅ Đã đăng nhập (${user?.role || 'user'})` : '⚠️ Chưa đăng nhập'}
           </span>
         </div>
       </div>
 
-      {/* Bố cục 2 cột */}
       <div className="grid grid-cols-1 lg:grid-cols-4 lg:gap-8">
 
         {/* --- CỘT SIDEBAR (BÊN TRÁI) --- */}
@@ -296,7 +344,7 @@ const ProductsPage = () => {
                   title="Làm mới số dư"
                 >
                   {balanceLoading ? <LoadingSpinner size="small" /> : '🔄'}
-              </button>
+                </button>
               </div>
               <div className="text-left">
                 <p className="text-sm text-purple-600">Số dư</p>
@@ -307,11 +355,11 @@ const ProductsPage = () => {
                     `${balance} ETH`
                   )}
                 </p>
-            </div>
+              </div>
               {isAuthenticated && (
                 <div className="mt-3 pt-3 border-t border-purple-200">
                   <p className="text-xs text-purple-600">
-                      Bạn có thể mua sản phẩm bằng số dư ETH trong ví
+                    💡 Bạn có thể mua sản phẩm bằng số dư ETH trong ví
                     {user?.role && (
                       <span className="ml-2">(Role: {user.role})</span>
                     )}
@@ -323,7 +371,8 @@ const ProductsPage = () => {
 
           {/* 2. Thẻ Lọc */}
           <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Lọc sản phẩm</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">🔍 Lọc sản phẩm</h3>
+            
             <div className="grid grid-cols-1 gap-4">
               {/* Search */}
               <div>
@@ -332,7 +381,7 @@ const ProductsPage = () => {
                   type="text"
                   placeholder="Tên sản phẩm..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-green-500 focus:border-green-500"
-                value={filters.search}
+                  value={filters.search}
                   onChange={(e) => handleFilterChange('search', e.target.value)}
                 />
               </div>
@@ -343,12 +392,12 @@ const ProductsPage = () => {
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-green-500 focus:border-green-500"
                   value={filters.type}
-            	    onChange={(e) => handleFilterChange('type', e.target.value)}
+                  onChange={(e) => handleFilterChange('type', e.target.value)}
                 >
                   <option value="">Tất cả</option>
                   <option value="lúa">Lúa</option>
                   <option value="cà phê">Cà phê</option>
-                <option value="tiêu">Tiêu</option>
+                  <option value="tiêu">Tiêu</option>
                   <option value="điều">Điều</option>
                   <option value="trái cây">Trái cây</option>
                   <option value="rau củ">Rau củ</option>
@@ -360,9 +409,9 @@ const ProductsPage = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Vùng miền</label>
                 <input
                   type="text"
-  	            placeholder="Nhập vùng miền..."
+                  placeholder="Nhập vùng miền..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-green-500 focus:border-green-500"
-                value={filters.region}
+                  value={filters.region}
                   onChange={(e) => handleFilterChange('region', e.target.value)}
                 />
               </div>
@@ -373,17 +422,19 @@ const ProductsPage = () => {
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-green-500 focus:border-green-500"
                   value={filters.organic}
-    	          onChange={(e) => handleFilterChange('organic', e.target.value)}
+                  onChange={(e) => handleFilterChange('organic', e.target.value)}
                 >
                   <option value="">Tất cả</option>
                   <option value="true">Có</option>
                   <option value="false">Không</option>
                 </select>
               </div>
+            </div>
 
-              {/* Price Range */}
+            {/* Price Range */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Giá tối thiểu (ETH)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Giá min (ETH)</label>
                 <input
                   type="number"
                   step="0.001"
@@ -395,34 +446,34 @@ const ProductsPage = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Giá tối đa (ETH)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Giá max (ETH)</label>
                 <input
                   type="number"
                   step="0.001"
                   placeholder="1.00"
-                min="0"
+                  min="0"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-green-500 focus:border-green-500"
                   value={filters.maxPrice}
                   onChange={(e) => handleFilterChange('maxPrice', e.target.value)}
                 />
               </div>
-
-              <div className="grid grid-cols-1 gap-2 mt-2">
-               <button
-                  onClick={applyFilters}
-                  disabled={loading}
-                  className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center justify-center transition-colors"
-                  title="Áp dụng bộ lọc"
-                >
-                  {loading ? <LoadingSpinner size="small" /> : 'Lọc'}
-                </button>
-                <button
-                  onClick={clearFilters}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Xóa lọc
-                </button>
-              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 gap-2 mt-4">
+              <button
+                onClick={applyFilters}
+                disabled={loading}
+                className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 flex items-center justify-center transition-colors"
+                title="Áp dụng bộ lọc"
+              >
+                {loading ? <LoadingSpinner size="small" /> : '🔍 Lọc'}
+              </button>
+              <button
+                onClick={clearFilters}
+                className="w-full px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                🗑️ Xóa lọc
+              </button>
             </div>
           </div>
         </aside>
@@ -433,7 +484,7 @@ const ProductsPage = () => {
           {/* Error Message */}
           {error && (
             <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-             <div className="flex items-center">
+              <div className="flex items-center">
                 <span className="text-lg mr-2">⚠️</span>
                 <span>{error}</span>
               </div>
@@ -451,12 +502,12 @@ const ProductsPage = () => {
                   ⛓️ Cập nhật real-time từ blockchain
                 </span>
               </div>
-  	      </div>
+            </div>
 
-            {availableProducts.length === 0 ? (
+            {availableProducts.length === 0 && !loading ? (
               <div className="text-center py-12">
                 <div className="text-gray-400 text-6xl mb-4">📭</div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Không tìm thấy sản phẩm</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Không tìm thấy sản phẩm</h3>
                 <p className="text-gray-600 mb-4">Hãy thử thay đổi bộ lọc hoặc tạo sản phẩm mới</p>
               </div>
             ) : (
@@ -464,9 +515,9 @@ const ProductsPage = () => {
                 {availableProducts.map((product) => (
                   <ProductCard product={product} isSoldCard={false} key={product._id || product.id} />
                 ))}
-          	  </div>
+              </div>
             )}
-  	    </div>
+          </div>
 
           {/* Products Grid - Đã bán */}
           <hr className="my-12" />
@@ -477,7 +528,7 @@ const ProductsPage = () => {
               </h3>
             </div>
 
-    	    {soldProducts.length === 0 ? (
+            {soldProducts.length === 0 && !loading ? (
               <div className="text-center py-12">
                 <p className="text-gray-600 mb-4">Chưa có sản phẩm nào được bán.</p>
               </div>
@@ -485,21 +536,21 @@ const ProductsPage = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {soldProducts.map((product) => (
                   <ProductCard product={product} isSoldCard={true} key={product._id || product.id} />
-              ))}
+                ))}
               </div>
             )}
           </div>
 
           {/* Call to Action */}
           {isAuthenticated && user?.role === 'farmer' && (
-           <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
               <h3 className="text-lg font-medium text-blue-900 mb-2">Bạn có sản phẩm muốn bán?</h3>
               <p className="text-blue-700 mb-4">Đăng sản phẩm của bạn lên marketplace ngay!</p>
               <Link
                 to="/farmer"
                 className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
               >
-  	          👨‍🌾 Đến Farmer Dashboard
+                👨‍🌾 Đến Farmer Dashboard
               </Link>
             </div>
           )}

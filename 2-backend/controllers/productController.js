@@ -1,6 +1,6 @@
 const Product = require('../models/productModel');
-const User = require('../models/userModel'); // [MỚI] Import User để lấy email
-const { sendTransactionEmails } = require('../utils/emailService'); // [MỚI] Import dịch vụ gửi mail
+const User = require('../models/userModel'); 
+const { sendTransactionEmails } = require('../utils/emailService'); 
 
 // @desc    Lấy tất cả sản phẩm với filter và pagination
 // @route   GET /api/products
@@ -15,7 +15,7 @@ const getProducts = async (req, res) => {
       organic,
       minPrice, 
       maxPrice,
-      status = '', 
+      status, // [SỬA] Bỏ giá trị mặc định = '' để xử lý logic bên dưới
       search,
       sortBy = 'createdAt',
       sortOrder = 'desc'
@@ -23,21 +23,39 @@ const getProducts = async (req, res) => {
 
     // Tạo filter object
     const filter = {};
-    if (status) filter.status = status; 
+
+    // [FIX LOGIC QUAN TRỌNG]: 
+    // Mặc định chỉ lấy 'available' nếu không truyền status.
+    // Nếu truyền status='all' thì mới lấy tất cả.
+    if (status) {
+        if (status !== 'all') {
+            filter.status = status;
+        }
+        // Nếu status === 'all', không gán filter.status -> lấy hết
+    } else {
+        filter.status = 'available'; 
+    }
     
     if (type && type !== 'all') filter.productType = type;
     if (region) filter.region = new RegExp(region, 'i');
-    if (organic !== undefined) filter.isOrganic = organic === 'true';
+    
+    // Xử lý boolean chính xác cho organic
+    if (organic !== undefined && organic !== '') {
+        filter.isOrganic = organic === 'true';
+    }
+
     if (minPrice || maxPrice) {
       filter.price = {};
       if (minPrice) filter.price.$gte = parseFloat(minPrice);
       if (maxPrice) filter.price.$lte = parseFloat(maxPrice);
     }
+
     if (search) {
       filter.$or = [
         { name: new RegExp(search, 'i') },
         { description: new RegExp(search, 'i') },
-        { region: new RegExp(search, 'i') }
+        { region: new RegExp(search, 'i') },
+        { farmName: new RegExp(search, 'i') }
       ];
     }
 
@@ -55,7 +73,7 @@ const getProducts = async (req, res) => {
     // Thêm virtual field
     const productsWithVirtual = products.map(product => ({
       ...product,
-      daysSinceHarvest: Math.floor((new Date() - new Date(product.harvestDate)) / (1000 * 60 * 60 * 24))
+      daysSinceHarvest: product.harvestDate ? Math.floor((new Date() - new Date(product.harvestDate)) / (1000 * 60 * 60 * 24)) : 0
     }));
 
     const total = await Product.countDocuments(filter);
@@ -76,7 +94,7 @@ const getProducts = async (req, res) => {
         minPrice,
         maxPrice,
         search,
-        status
+        status: filter.status || 'all' // Trả về status thực tế để Frontend biết
       }
     });
   } catch (error) {
@@ -89,11 +107,22 @@ const getProducts = async (req, res) => {
 };
 
 // @desc    Lấy chi tiết sản phẩm
-// @route   GET /api/products/:id (id là blockchainId)
+// @route   GET /api/products/:id (id là blockchainId HOẶC mongoId)
 // @access  Public
 const getProduct = async (req, res) => {
   try {
-    const product = await Product.findOne({ blockchainId: req.params.id }); 
+    const { id } = req.params;
+    let product;
+
+    // [NÂNG CẤP] Kiểm tra thông minh: ID là MongoDB ID (24 hex chars) hay Blockchain ID (số)?
+    // Giúp tránh lỗi khi Frontend gọi nhầm loại ID
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+        product = await Product.findById(id);
+        // Nếu tìm theo ID MongoDB không thấy, thử tìm theo BlockchainID (phòng hờ)
+        if (!product) product = await Product.findOne({ blockchainId: id });
+    } else {
+        product = await Product.findOne({ blockchainId: id });
+    }
     
     if (!product) {
       return res.status(404).json({
@@ -105,7 +134,7 @@ const getProduct = async (req, res) => {
     // Thêm virtual field
     const productWithVirtual = {
       ...product.toObject(),
-      daysSinceHarvest: Math.floor((new Date() - product.harvestDate) / (1000 * 60 * 60 * 24))
+      daysSinceHarvest: product.harvestDate ? Math.floor((new Date() - product.harvestDate) / (1000 * 60 * 60 * 24)) : 0
     };
 
     res.json({
@@ -221,7 +250,11 @@ const getFarmerProducts = async (req, res) => {
 
     const { status } = req.query;
     const filter = { farmerWallet: req.user.walletAddress };
-    if (status) filter.status = status;
+    
+    // Nếu status = 'all' thì không lọc status (lấy hết), ngược lại thì lọc
+    if (status && status !== 'all') {
+        filter.status = status;
+    }
 
     const products = await Product.find(filter).sort({ createdAt: -1 });
 
@@ -257,6 +290,8 @@ const updateProduct = async (req, res) => {
     }
 
     const isFarmerOwner = product.farmerWallet === req.user.walletAddress;
+    
+    // Logic phân quyền: Cho phép Buyer/Admin cập nhật status='sold'
     const isBuyerUpdatingStatus = 
         (req.user.role === 'buyer' || req.user.role === 'admin') &&
         updateData.status === 'sold';
