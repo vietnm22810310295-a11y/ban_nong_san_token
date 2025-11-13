@@ -62,6 +62,10 @@ contract AgriculturalMarketplace {
     // Đăng ký người dùng
     function registerUser(string memory _name, string memory _role) public {
         require(!users[msg.sender].isRegistered, "User already registered");
+        
+        // [SỬA 1] Thêm validation cho Tên
+        require(bytes(_name).length > 0, "Name cannot be empty");
+
         require(
             keccak256(abi.encodePacked(_role)) == keccak256(abi.encodePacked("farmer")) ||
             keccak256(abi.encodePacked(_role)) == keccak256(abi.encodePacked("buyer")),
@@ -94,6 +98,10 @@ contract AgriculturalMarketplace {
             keccak256(abi.encodePacked(users[msg.sender].role)) == keccak256(abi.encodePacked("farmer")),
             "Only farmers can register products"
         );
+        
+        // [SỬA 2] Thêm validation cho Giá và Tên
+        require(_price > 0, "Price must be greater than 0");
+        require(bytes(_name).length > 0, "Product name cannot be empty");
 
         productCount++;
         
@@ -119,6 +127,9 @@ contract AgriculturalMarketplace {
 
     // Mua sản phẩm
     function buyProduct(uint256 _productId) public payable onlyRegistered productNotSold(_productId) {
+        // [SỬA 3] Thêm validation cho ID (RẤT QUAN TRỌNG)
+        require(_productId > 0 && _productId <= productCount, "Product does not exist");
+        
         Product storage product = products[_productId];
         require(msg.value >= product.price, "Insufficient payment");
         require(product.owner != msg.sender, "Cannot buy your own product");
@@ -146,6 +157,10 @@ contract AgriculturalMarketplace {
         onlyProductOwner(_productId) 
         productNotSold(_productId) 
     {
+        // [SỬA 4] Thêm validation cho ID và Giá mới
+        require(_productId > 0 && _productId <= productCount, "Product does not exist");
+        require(_newPrice > 0, "Price must be greater than 0");
+
         products[_productId].price = _newPrice;
         emit PriceUpdated(_productId, _newPrice);
     }
@@ -155,34 +170,37 @@ contract AgriculturalMarketplace {
         uint256, string memory, string memory, uint256, string memory, 
         string memory, address, address, uint256, bool, bool, uint256
     ) {
+        // Thêm kiểm tra ID ở đây cũng tốt
+        require(_productId > 0 && _productId <= productCount, "Product does not exist");
+        
         Product memory p = products[_productId];
         return (
             p.id, p.name, p.productType, p.harvestDate, p.region,
             p.farmName, p.farmer, p.owner, p.price, p.isOrganic, 
-            p.isSold, p.createdAt
-        );
-    }
+        	p.isSold, p.createdAt
+      	);
+  	}
 
-    // Lấy sản phẩm của farmer
-    function getFarmerProducts(address _farmer) public view returns (uint256[] memory) {
-        return farmerProducts[_farmer];
-    }
+  	// Lấy sản phẩm của farmer
+  	function getFarmerProducts(address _farmer) public view returns (uint256[] memory) {
+      	return farmerProducts[_farmer];
+  	}
 
-    // Lấy sản phẩm đã mua
-    function getUserPurchases(address _user) public view returns (uint256[] memory) {
-        return userPurchases[_user];
-    }
+  	// Lấy sản phẩm đã mua
+  	function getUserPurchases(address _user) public view returns (uint256[] memory) {
+      	return userPurchases[_user];
+  	}
 
-    // Lấy thông tin user
-    function getUserInfo(address _user) public view returns (
-        string memory, string memory, uint256, bool
-    ) {
-        User memory u = users[_user];
-        return (u.name, u.role, u.joinDate, u.isRegistered);
-    }
+  	// Lấy thông tin user
+  	function getUserInfo(address _user) public view returns (
+    	  string memory, string memory, uint256, bool
+  	) {
+      	User memory u = users[_user];
+      	return (u.name, u.role, u.joinDate, u.isRegistered);
+  	}
 
-    // Kiểm tra user đã đăng ký chưa
-    function isUserRegistered(address _user) public view returns (bool) {
-        return users[_user].isRegistered;
-    }
+  	// Kiểm tra user đã đăng ký chưa
+  	function isUserRegistered(address _user) public view returns (bool) {
+      	return users[_user].isRegistered;
+  	}
 }

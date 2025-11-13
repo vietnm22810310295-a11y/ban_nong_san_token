@@ -7,13 +7,13 @@ const config = {
   vnp_TmnCode: "GIU01VA3", 
   vnp_HashSecret: "ZDN38F3AQBN15KDVECUJRZU122UCTKWL",
   vnp_Url: "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
-  vnp_ReturnUrl: "http://localhost:5173/vnpay-return" // Link frontend nhận kết quả
+  vnp_ReturnUrl: "http://localhost:5173/vnpay-return" // Link dự phòng
 };
 
 const createPaymentUrl = (req, res) => {
   try {
-    // [SỬA 1] Nhận thêm "orderId" (là blockchainId) và "amount" (là priceVND)
-    const { amount, orderInfo, orderId } = req.body;
+    // [SỬA 1] Nhận thêm "orderId", "amount" VÀ "vnp_ReturnUrl" từ req.body
+    const { amount, orderInfo, orderId, vnp_ReturnUrl } = req.body; 
 
     // Kiểm tra đầu vào
     if (!amount || !orderId) {
@@ -24,8 +24,7 @@ const createPaymentUrl = (req, res) => {
     const date = new Date();
     const createDate = moment(date).format('YYYYMMDDHHmmss');
     
-    // [SỬA 2] Dùng orderId (blockchainId) làm mã giao dịch
-    // Thêm hậu tố thời gian (HHmmss) để VNPAY không báo lỗi "trùng mã đơn hàng" khi bạn test nhiều lần
+    // Dùng orderId (blockchainId) làm mã giao dịch
     const txnRef = `${orderId}-${moment(date).format('HHmmss')}`; 
     
     let vnp_Params = {};
@@ -34,21 +33,24 @@ const createPaymentUrl = (req, res) => {
     vnp_Params['vnp_TmnCode'] = config.vnp_TmnCode;
     vnp_Params['vnp_Locale'] = 'vn';
     vnp_Params['vnp_CurrCode'] = 'VND';
-    vnp_Params['vnp_TxnRef'] = txnRef; // [SỬA 3] Dùng mã giao dịch mới
+    vnp_Params['vnp_TxnRef'] = txnRef;
     vnp_Params['vnp_OrderInfo'] = orderInfo || 'Thanh toan don hang';
     vnp_Params['vnp_OrderType'] = 'other';
-    vnp_Params['vnp_Amount'] = amount * 100; // VNPAY tính đơn vị là đồng (VD: 50.000 VND -> 5000000)
-    vnp_Params['vnp_ReturnUrl'] = config.vnp_ReturnUrl;
+    vnp_Params['vnp_Amount'] = amount * 100;
+    
+    // [SỬA 2] Ưu tiên sử dụng ReturnUrl từ frontend gửi lên
+    // Nếu frontend không gửi, thì mới dùng link localhost dự phòng
+    vnp_Params['vnp_ReturnUrl'] = vnp_ReturnUrl || config.vnp_ReturnUrl; 
+    
     vnp_Params['vnp_IpAddr'] = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.socket.remoteAddress || (req.connection.socket ? req.connection.socket.remoteAddress : null);
     vnp_Params['vnp_CreateDate'] = createDate;
 
-    // Sắp xếp tham số (Bắt buộc)
+    // Sắp xếp tham số
     vnp_Params = sortObject(vnp_Params);
 
     // Ký tên (Signature)
     const signData = qs.stringify(vnp_Params, { encode: false });
     const hmac = crypto.createHmac("sha512", config.vnp_HashSecret);
-    // [SỬA 4] Dùng Buffer.from thay vì new Buffer (cú pháp mới)
     const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest("hex"); 
     
     vnp_Params['vnp_SecureHash'] = signed;

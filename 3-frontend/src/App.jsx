@@ -11,8 +11,9 @@ import ProductsPage from './pages/ProductsPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import FarmerDashboard from './pages/FarmerDashboard';
 import MyPurchases from './pages/MyPurchases';
-import InvoicePage from './pages/InvoicePage'; // [THÊM 1] Import trang hóa đơn
+import InvoicePage from './pages/InvoicePage';
 import VnPayReturn from './pages/VnPayReturn';
+import Chatbot from './components/Chatbot';
 import './index.css';
 
 function App() {
@@ -30,6 +31,7 @@ function App() {
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/products" element={<ProductsPage />} />
                 <Route path="/vnpay-return" element={<VnPayReturn />} />
+
                 {/* Protected Routes */}
                 <Route 
                   path="/products/:id" 
@@ -54,46 +56,50 @@ function App() {
                       <MyPurchases />
                     </ProtectedRoute>
                   } 
-          _     />
-
-                {/* [THÊM 2] Route cho trang Hóa đơn (cần đăng nhập) */}
-                <Route 
-                  path="/invoice" 
-                  element={
-            	      <ProtectedRoute>
-            	        <InvoicePage />
-            	      </ProtectedRoute>
-            	    } 
             	  />
 
-                {/* 404 Page */}
-                <Route path="*" element={
-                  <div className="min-h-screen flex items-center justify-center">
-              	  <div className="text-center">
-              	    <h1 className="text-4xl font-bold text-gray-900 mb-4">404</h1>
-              	  	  <p className="text-gray-600 mb-4">Trang không tồn tại</p>
-    	            s   <Link to="/" className="text-green-600 hover:text-green-700 font-medium">
-                  	    Quay về trang chủ
-                  	  </Link>
-                  	</div>
-              	  </div>
-              	} />
-  	          </Routes>
-      	      </main>
+            	  {/* Route cho trang Hóa đơn (cần đăng nhập) */}
+            	  <Route 
+              	  path="/invoice" 
+              	  element={
+              	    <ProtectedRoute>
+              	      <InvoicePage />
+              	    </ProtectedRoute>
+              	  } 
+            	  />
 
-  	        {/* Footer */}
-    	      <footer className="bg-white border-t mt-16">
-      	      <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-      	        <div className="text-center text-gray-600">
-  	              <p>🌱 Nông Sản Blockchain - Kết nối nông dân và người tiêu dùng</p>
-  	              <p className="mt-2 text-sm">© 2024 All rights reserved</p>
-  	            </div>
-      	      </div>
-    	      </footer>
-    	  	</div>
-      </Router>
-    </AuthProvider>
-  </Web3Provider>
+            	  {/* 404 Page */}
+            	  <Route path="*" element={
+              	  <div className="min-h-screen flex items-center justify-center">
+              	    <div className="text-center">
+              	      <h1 className="text-4xl font-bold text-gray-900 mb-4">404</h1>
+              	  	  <p className="text-gray-600 mb-4">Trang không tồn tại</p>
+              	  	  <Link to="/" className="text-green-600 hover:text-green-700 font-medium">
+              	  	     Quay về trang chủ
+              	  	  </Link>
+              	  	</div>
+              	  </div>
+            	  } />
+            	</Routes>
+          	</main>
+
+          	{/* Footer */}
+          	<footer className="bg-white border-t mt-16">
+            	<div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+              	<div className="text-center text-gray-600">
+                	<p>🌱 Nông Sản Blockchain - Kết nối nông dân và người tiêu dùng</p>
+                	<p className="mt-2 text-sm">© 2024 All rights reserved</p>
+              	</div>
+            	</div>
+          	</footer>
+        	</div>
+        	
+        	{/* Thêm Chatbot vào đây để nó hiển thị trên mọi trang */}
+        	<Chatbot />
+
+        </Router>
+      </AuthProvider>
+    </Web3Provider>
   );
 }
 

@@ -26,3 +26,48 @@ body {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+/* --- [SỬA] Thêm CSS cho Chatbot --- */
+
+/* Tùy chỉnh thanh cuộn cho chatbot */
+.chatbot-messages::-webkit-scrollbar {
+  width: 6px;
+}
+.chatbot-messages::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+.chatbot-messages::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 10px;
+}
+.chatbot-messages::-webkit-scrollbar-thumb:hover {
+  background: #aaa;
+}
+
+/* "Đuôi" của bong bóng chat (giống Messenger) */
+.chat-bubble-model::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: -10px;
+  width: 0;
+  height: 0;
+  border: 10px solid transparent;
+  border-bottom: 0;
+  border-right-color: #e5e7eb; /* Màu bg-gray-200 */
+  margin-bottom: 0px;
+}
+
+.chat-bubble-user::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: -10px;
+  width: 0;
+  height: 0;
+  border: 10px solid transparent;
+  border-bottom: 0;
+  border-left-color: #16a34a; /* Màu bg-green-600 */
+  margin-bottom: 0px;
+}
