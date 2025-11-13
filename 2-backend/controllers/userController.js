@@ -32,11 +32,11 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // Kiểm tra role hợp lệ
-    if (!['farmer', 'buyer'].includes(role)) {
+    // [MOD] Kiểm tra role hợp lệ (Cho phép 'admin' nếu cần thiết)
+    if (!['farmer', 'buyer', 'admin'].includes(role)) {
       return res.status(400).json({
         success: false,
-        message: 'Vai trò phải là farmer hoặc buyer'
+        message: 'Vai trò không hợp lệ'
       });
     }
 
@@ -70,12 +70,19 @@ const registerUser = async (req, res) => {
       }
     }
 
+    // [QUAN TRỌNG] Logic tự động set Admin
+    // Nếu email là 'admin@gmail.com' => Tự động set role = 'admin'
+    let finalRole = role;
+    if (email && email.toLowerCase() === 'admin@gmail.com') {
+        finalRole = 'admin';
+    }
+
     // Tạo user mới
     const user = await User.create({
       walletAddress: walletAddress.toLowerCase(),
       name: name.trim(),
       email: email ? email.toLowerCase() : null,
-      role,
+      role: finalRole, // Sử dụng role đã xử lý
       phone: phone ? phone.trim() : null,
       address: address ? address.trim() : null
     });
@@ -86,7 +93,7 @@ const registerUser = async (req, res) => {
     // Trả về response
     res.status(201).json({
       success: true,
-      message: 'Đăng ký user thành công',
+      message: finalRole === 'admin' ? 'Đăng ký ADMIN thành công!' : 'Đăng ký user thành công',
       data: {
         _id: user._id,
         walletAddress: user.walletAddress,

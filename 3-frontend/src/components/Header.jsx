@@ -2,11 +2,14 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useWeb3 } from '../contexts/Web3Context';
+import { useCart } from '../contexts/CartContext'; // [MỚI] Import CartContext
 import WalletConnect from './WalletConnect';
 
 const Header = () => {
-  const { user, logout, isAuthenticated, updateUser } = useAuth(); // Lấy hàm updateUser
+  const { user, logout, isAuthenticated, updateUser } = useAuth();
   const { isConnected, account, getBalance } = useWeb3();
+  const { cartCount } = useCart(); // [MỚI] Lấy số lượng giỏ hàng
+  
   const [balance, setBalance] = useState('0.00');
   const [balanceLoading, setBalanceLoading] = useState(false);
   
@@ -88,8 +91,7 @@ const Header = () => {
 
       if (result.success) {
         setUpdateMessage({ type: 'success', content: 'Cập nhật thành công!' });
-        setIsEditing(false); // Tắt chế độ sửa
-        // Tắt thông báo sau 3s
+        setIsEditing(false); 
         setTimeout(() => setUpdateMessage({ type: '', content: '' }), 3000);
       } else {
         setUpdateMessage({ type: 'error', content: result.message || 'Có lỗi xảy ra' });
@@ -100,6 +102,15 @@ const Header = () => {
       setUpdateLoading(false);
     }
   };
+
+  // Helper để hiển thị Role đẹp hơn
+  const getRoleDisplay = () => {
+    if (user?.role === 'admin') return { label: 'Quản trị viên', class: 'bg-red-100 text-red-800' };
+    if (user?.role === 'farmer') return { label: 'Nông dân', class: 'bg-green-100 text-green-800' };
+    return { label: 'Người mua', class: 'bg-blue-100 text-blue-800' };
+  };
+
+  const roleInfo = getRoleDisplay();
 
   return (
     <>
@@ -130,8 +141,20 @@ const Header = () => {
                 )}
               </div>
 
+              {/* [MỚI] NÚT GIỎ HÀNG */}
+              <Link to="/cart" className="relative group p-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-gray-600 group-hover:text-green-600 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                {cartCount > 0 && (
+                  <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/4 -translate-y-1/4 bg-red-600 rounded-full">
+                    {cartCount}
+                  </span>
+                )}
+              </Link>
+
               {isAuthenticated ? (
-                <div className="relative ml-4 pl-4 border-l border-gray-200" ref={dropdownRef}>
+                <div className="relative ml-2 pl-4 border-l border-gray-200" ref={dropdownRef}>
                   <button
                     onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                     className="flex items-center text-gray-700 text-sm font-medium hover:text-green-600 focus:outline-none"
@@ -145,12 +168,18 @@ const Header = () => {
                     <div className="p-4 border-b">
                       <p className="font-medium text-gray-800 truncate">{user?.name || 'Chưa cập nhật tên'}</p>
                       <p className="text-sm text-gray-500 truncate">{user?.walletAddress}</p>
-                      <span className={`inline-block mt-2 px-3 py-1 rounded-full text-sm ${user?.role === 'farmer' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
-                        {user?.role === 'farmer' ? 'Nông dân' : 'Người mua'}
+                      <span className={`inline-block mt-2 px-3 py-1 rounded-full text-sm ${roleInfo.class}`}>
+                        {roleInfo.label}
                       </span>
                     </div>
                     
                     <nav className="py-2">
+                      {user?.role === 'admin' && (
+                        <Link to="/admin" onClick={() => setIsDropdownOpen(false)} className="block px-4 py-2 text-gray-700 hover:bg-red-50 hover:text-red-600 font-bold border-b">
+                           🛡️ Trang Quản Trị (Admin)
+                        </Link>
+                      )}
+
                       {user?.role === 'farmer' && (
                         <Link to="/farmer" onClick={() => setIsDropdownOpen(false)} className="block px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-green-600">
                           Farmer Dashboard
@@ -171,7 +200,7 @@ const Header = () => {
                   </div>
                 </div>
               ) : (
-                <div className="flex gap-x-2">
+                <div className="flex gap-x-2 ml-4">
                   <Link to="/login" className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm transition">Đăng nhập</Link>
                   <Link to="/register" className="border border-green-500 text-green-500 hover:bg-green-50 px-4 py-2 rounded-lg text-sm transition">Đăng ký</Link>
                 </div>
@@ -181,7 +210,7 @@ const Header = () => {
         </div>
       </header>
 
-      {/* Modal Cài đặt thông tin (Có chức năng Sửa) */}
+      {/* Modal Cài đặt thông tin */}
       {isSettingsOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in-up transform transition-all">
@@ -195,7 +224,6 @@ const Header = () => {
             </div>
             
             <div className="p-6 space-y-4">
-              {/* Thông báo lỗi/thành công */}
               {updateMessage.content && (
                 <div className={`p-3 rounded-lg text-sm text-center ${updateMessage.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                   {updateMessage.content}
@@ -206,29 +234,16 @@ const Header = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-500 mb-1">Họ và tên</label>
                 {isEditing ? (
-                  <input
-                    type="text"
-                    name="name"
-                    value={editFormData.name}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-                  />
+                  <input type="text" name="name" value={editFormData.name} onChange={handleInputChange} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none" />
                 ) : (
                   <div className="bg-gray-50 px-4 py-2 rounded-lg border text-gray-800 font-medium">{user?.name}</div>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-500 mb-1">Email liên hệ (Nhận thông báo)</label>
+                <label className="block text-sm font-medium text-gray-500 mb-1">Email liên hệ</label>
                 {isEditing ? (
-                  <input
-                    type="email"
-                    name="email"
-                    value={editFormData.email}
-                    onChange={handleInputChange}
-                    placeholder="Ví dụ: abc@gmail.com"
-                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-                  />
+                  <input type="email" name="email" value={editFormData.email} onChange={handleInputChange} placeholder="Ví dụ: abc@gmail.com" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none" />
                 ) : (
                   <div className="bg-gray-50 px-4 py-2 rounded-lg border text-gray-800">
                     {user?.email ? `${user.email}` : <span className="text-gray-400 italic">Chưa cập nhật</span>}
@@ -239,14 +254,7 @@ const Header = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-500 mb-1">Số điện thoại</label>
                 {isEditing ? (
-                  <input
-                    type="text"
-                    name="phone"
-                    value={editFormData.phone}
-                    onChange={handleInputChange}
-                    placeholder="Ví dụ: 0912..."
-                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-                  />
+                  <input type="text" name="phone" value={editFormData.phone} onChange={handleInputChange} placeholder="Ví dụ: 0912..." className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none" />
                 ) : (
                   <div className="bg-gray-50 px-4 py-2 rounded-lg border text-gray-800">
                     {user?.phone ? `${user.phone}` : <span className="text-gray-400 italic">Chưa cập nhật</span>}
@@ -266,35 +274,15 @@ const Header = () => {
             <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3">
               {isEditing ? (
                 <>
-                  <button
-                    onClick={() => { setIsEditing(false); setUpdateMessage({type: '', content: ''}); }}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition"
-                    disabled={updateLoading}
-                  >
-                    Hủy bỏ
-                  </button>
-                  <button
-                    onClick={handleSaveProfile}
-                    disabled={updateLoading}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition flex items-center"
-                  >
+                  <button onClick={() => { setIsEditing(false); setUpdateMessage({type: '', content: ''}); }} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition" disabled={updateLoading}>Hủy bỏ</button>
+                  <button onClick={handleSaveProfile} disabled={updateLoading} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium transition flex items-center">
                     {updateLoading ? 'Đang lưu...' : 'Lưu thay đổi'}
                   </button>
                 </>
               ) : (
                 <>
-                  <button
-                    onClick={() => setIsSettingsOpen(false)}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition"
-                  >
-                    Đóng
-                  </button>
-                  <button
-                    onClick={() => setIsEditing(true)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition flex items-center gap-2"
-                  >
-                    Chỉnh sửa
-                  </button>
+                  <button onClick={() => setIsSettingsOpen(false)} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition">Đóng</button>
+                  <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition flex items-center gap-2">Chỉnh sửa</button>
                 </>
               )}
             </div>

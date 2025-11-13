@@ -51,7 +51,7 @@ const productSchema = new mongoose.Schema(
       min: [0, 'Giá không thể âm'],
       max: [1000000, 'Giá quá lớn']
     },
-    // [THÊM MỚI] Giá VND (cho thanh toán VNPAY/Tiền mặt)
+    // Giá VND (cho thanh toán VNPAY/Tiền mặt)
     priceVND: {
       type: Number,
       required: [true, 'Vui lòng nhập giá VND'],
@@ -77,10 +77,29 @@ const productSchema = new mongoose.Schema(
       required: true,
       match: [/^0x[a-fA-F0-9]{40}$/, 'Địa chỉ ví không hợp lệ']
     },
+    // --- QUẢN LÝ SỐ LƯỢNG (TỒN KHO) ---
+    quantity: {
+      type: Number,
+      default: 1,
+      min: [0, 'Số lượng không được âm'] // Cho phép về 0 (hết hàng)
+    },
+    unit: {
+      type: String,
+      default: 'kg',
+      enum: ['kg', 'tấn', 'tạ', 'bao', 'lô']
+    },
     isSold: {
       type: Boolean,
       default: false
     },
+    // --- QUẢN LÝ DUYỆT BÀI (ADMIN) ---
+    // Tách riêng status duyệt khỏi status giao dịch để tránh lỗi logic cũ
+    approvalStatus: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: 'pending' // Mặc định đăng lên là Chờ duyệt, chưa hiện trang chủ
+    },
+    // Status giao dịch (Giữ nguyên logic cũ của bạn)
     status: {
       type: String,
       enum: ['available', 'sold', 'pending', 'refund-requested', 'refunded', 'cash-pending'],
@@ -90,16 +109,6 @@ const productSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: null
-    },
-    quantity: {
-      type: Number,
-      default: 1,
-      min: [1, 'Số lượng ít nhất là 1']
-    },
-    unit: {
-      type: String,
-      default: 'kg',
-      enum: ['kg', 'tấn', 'tạ', 'bao', 'lô']
     }
   },
   {
@@ -112,7 +121,7 @@ productSchema.index({ farmerWallet: 1 });
 productSchema.index({ productType: 1 });
 productSchema.index({ isSold: 1 });
 productSchema.index({ region: 1 });
-productSchema.index({ status: 1 });
+productSchema.index({ approvalStatus: 1 }); // Index mới để lọc bài đã duyệt nhanh
 productSchema.index({ createdAt: -1 });
 productSchema.index({ price: 1 });
 

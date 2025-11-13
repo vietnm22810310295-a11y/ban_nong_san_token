@@ -6,16 +6,19 @@ contract AgriculturalMarketplace {
     struct Product {
         uint256 id;
         string name;
-        string productType; // lúa, cà phê, tiêu, điều...
+        string productType;
         uint256 harvestDate;
-        string region; // vùng trồng
+        string region;
         string farmName;
         address farmer;
-        address owner;
-        uint256 price; // giá in wei
+        address owner;      // Người đang giữ quyền bán (thường là farmer)
+        uint256 price;      // GIÁ TRÊN 1 ĐƠN VỊ (Ví dụ: 0.01 ETH / 1 kg)
         bool isOrganic;
-        bool isSold;
+        bool isSold;        // True nếu quantity = 0
         uint256 createdAt;
+        // [THÊM MỚI] Quản lý tồn kho
+        uint256 quantity;   // Số lượng còn lại
+        string unit;        // Đơn vị (kg, tấn, tạ...)
     }
 
     // Struct người dùng
@@ -27,23 +30,30 @@ contract AgriculturalMarketplace {
         bool isRegistered;
     }
 
-    // Biến state
+    // [THÊM MỚI] Struct lưu lịch sử mua hàng chi tiết
+    struct Purchase {
+        uint256 productId;
+        uint256 quantity;
+        uint256 totalPrice;
+        uint256 timestamp;
+    }
+
     uint256 public productCount = 0;
     uint256 public userCount = 0;
     
-    // Mappings
     mapping(uint256 => Product) public products;
     mapping(address => User) public users;
     mapping(address => uint256[]) public farmerProducts;
-    mapping(address => uint256[]) public userPurchases;
+    
+    // [SỬA] Lưu struct Purchase thay vì chỉ ID sản phẩm
+    mapping(address => Purchase[]) public userPurchases;
 
-    // Events
     event UserRegistered(address userAddress, string name, string role);
-    event ProductRegistered(uint256 productId, string name, address farmer);
-    event ProductSold(uint256 productId, address buyer, uint256 price);
+    event ProductRegistered(uint256 productId, string name, address farmer, uint256 quantity);
+    event ProductSold(uint256 productId, address buyer, uint256 quantity, uint256 totalPrice);
     event PriceUpdated(uint256 productId, uint256 newPrice);
+    event StockUpdated(uint256 productId, uint256 newQuantity);
 
-    // Modifiers
     modifier onlyRegistered() {
         require(users[msg.sender].isRegistered, "User not registered");
         _;
@@ -54,22 +64,18 @@ contract AgriculturalMarketplace {
         _;
     }
 
-    modifier productNotSold(uint256 _productId) {
-        require(!products[_productId].isSold, "Product already sold");
-        _;
-    }
-
     // Đăng ký người dùng
     function registerUser(string memory _name, string memory _role) public {
         require(!users[msg.sender].isRegistered, "User already registered");
-        
-        // [SỬA 1] Thêm validation cho Tên
         require(bytes(_name).length > 0, "Name cannot be empty");
-
+        
+        // Validate Role
+        bytes32 roleHash = keccak256(abi.encodePacked(_role));
         require(
-            keccak256(abi.encodePacked(_role)) == keccak256(abi.encodePacked("farmer")) ||
-            keccak256(abi.encodePacked(_role)) == keccak256(abi.encodePacked("buyer")),
-            "Role must be farmer or buyer"
+            roleHash == keccak256(abi.encodePacked("farmer")) || 
+            roleHash == keccak256(abi.encodePacked("buyer")) ||
+            roleHash == keccak256(abi.encodePacked("admin")), 
+            "Invalid role"
         );
 
         users[msg.sender] = User({
@@ -80,28 +86,24 @@ contract AgriculturalMarketplace {
             isRegistered: true
         });
         userCount++;
-
         emit UserRegistered(msg.sender, _name, _role);
     }
 
-    // Đăng ký sản phẩm mới (chỉ farmer)
+    // Đăng ký sản phẩm (Thêm quantity và unit)
     function registerProduct(
         string memory _name,
         string memory _productType,
         uint256 _harvestDate,
         string memory _region,
         string memory _farmName,
-        uint256 _price,
-        bool _isOrganic
+        uint256 _pricePerUnit,
+        bool _isOrganic,
+        uint256 _quantity,
+        string memory _unit
     ) public onlyRegistered {
-        require(
-            keccak256(abi.encodePacked(users[msg.sender].role)) == keccak256(abi.encodePacked("farmer")),
-            "Only farmers can register products"
-        );
-        
-        // [SỬA 2] Thêm validation cho Giá và Tên
-        require(_price > 0, "Price must be greater than 0");
-        require(bytes(_name).length > 0, "Product name cannot be empty");
+        require(keccak256(abi.encodePacked(users[msg.sender].role)) == keccak256(abi.encodePacked("farmer")), "Only farmers can register products");
+        require(_pricePerUnit > 0, "Price must be greater than 0");
+        require(_quantity > 0, "Quantity must be greater than 0");
 
         productCount++;
         
@@ -114,93 +116,99 @@ contract AgriculturalMarketplace {
             farmName: _farmName,
             farmer: msg.sender,
             owner: msg.sender,
-            price: _price,
+            price: _pricePerUnit,
             isOrganic: _isOrganic,
             isSold: false,
-            createdAt: block.timestamp
+            createdAt: block.timestamp,
+            quantity: _quantity,
+            unit: _unit
         });
 
         farmerProducts[msg.sender].push(productCount);
-        
-        emit ProductRegistered(productCount, _name, msg.sender);
+        emit ProductRegistered(productCount, _name, msg.sender, _quantity);
     }
 
-    // Mua sản phẩm
-    function buyProduct(uint256 _productId) public payable onlyRegistered productNotSold(_productId) {
-        // [SỬA 3] Thêm validation cho ID (RẤT QUAN TRỌNG)
+    // [QUAN TRỌNG] Mua sản phẩm theo số lượng
+    function buyProduct(uint256 _productId, uint256 _quantityToBuy) public payable onlyRegistered {
         require(_productId > 0 && _productId <= productCount, "Product does not exist");
         
         Product storage product = products[_productId];
-        require(msg.value >= product.price, "Insufficient payment");
+        
+        require(!product.isSold, "Product is sold out");
+        require(product.quantity >= _quantityToBuy, "Not enough stock");
         require(product.owner != msg.sender, "Cannot buy your own product");
 
-        address previousOwner = product.owner;
-        product.owner = msg.sender;
-        product.isSold = true;
+        // Tính tổng tiền: Giá đơn vị * Số lượng mua
+        uint256 totalCost = product.price * _quantityToBuy;
+        require(msg.value >= totalCost, "Insufficient ETH sent");
 
-        // Chuyển tiền cho người bán
-        payable(previousOwner).transfer(product.price);
-        
-        // Hoàn lại tiền thừa nếu có
-        if (msg.value > product.price) {
-            payable(msg.sender).transfer(msg.value - product.price);
+        // 1. Trừ kho
+        product.quantity = product.quantity - _quantityToBuy;
+
+        // 2. Nếu hết hàng -> Đánh dấu đã bán hết
+        if (product.quantity == 0) {
+            product.isSold = true;
         }
 
-        userPurchases[msg.sender].push(_productId);
-        emit ProductSold(_productId, msg.sender, product.price);
+        // 3. Chuyển tiền cho người bán (Farmer)
+        payable(product.owner).transfer(totalCost);
+
+        // 4. Hoàn tiền thừa (nếu có)
+        if (msg.value > totalCost) {
+            payable(msg.sender).transfer(msg.value - totalCost);
+        }
+
+        // 5. Lưu lịch sử mua hàng
+        userPurchases[msg.sender].push(Purchase({
+            productId: _productId,
+            quantity: _quantityToBuy,
+            totalPrice: totalCost,
+            timestamp: block.timestamp
+        }));
+
+        emit ProductSold(_productId, msg.sender, _quantityToBuy, totalCost);
     }
 
-    // Cập nhật giá sản phẩm
-    function updateProductPrice(uint256 _productId, uint256 _newPrice) 
-        public 
-        onlyRegistered 
-        onlyProductOwner(_productId) 
-        productNotSold(_productId) 
-    {
-        // [SỬA 4] Thêm validation cho ID và Giá mới
-        require(_productId > 0 && _productId <= productCount, "Product does not exist");
-        require(_newPrice > 0, "Price must be greater than 0");
+    // Cập nhật số lượng hàng (Nhập thêm hàng)
+    function restockProduct(uint256 _productId, uint256 _addedQuantity) public onlyProductOwner(_productId) {
+        require(_addedQuantity > 0, "Quantity must be positive");
+        products[_productId].quantity += _addedQuantity;
+        
+        // Nếu đang hết hàng mà nhập thêm -> Mở bán lại
+        if (products[_productId].isSold && products[_productId].quantity > 0) {
+            products[_productId].isSold = false;
+        }
+        
+        emit StockUpdated(_productId, products[_productId].quantity);
+    }
 
+    // Cập nhật giá
+    function updateProductPrice(uint256 _productId, uint256 _newPrice) public onlyProductOwner(_productId) {
+        require(_newPrice > 0, "Price must be greater than 0");
         products[_productId].price = _newPrice;
         emit PriceUpdated(_productId, _newPrice);
     }
 
-    // Lấy thông tin sản phẩm
-    function getProduct(uint256 _productId) public view returns (
-        uint256, string memory, string memory, uint256, string memory, 
-        string memory, address, address, uint256, bool, bool, uint256
-    ) {
-        // Thêm kiểm tra ID ở đây cũng tốt
-        require(_productId > 0 && _productId <= productCount, "Product does not exist");
-        
-        Product memory p = products[_productId];
-        return (
-            p.id, p.name, p.productType, p.harvestDate, p.region,
-            p.farmName, p.farmer, p.owner, p.price, p.isOrganic, 
-        	p.isSold, p.createdAt
-      	);
-  	}
+    // GETTERS
+    function getProduct(uint256 _productId) public view returns (Product memory) {
+        return products[_productId];
+    }
 
-  	// Lấy sản phẩm của farmer
-  	function getFarmerProducts(address _farmer) public view returns (uint256[] memory) {
-      	return farmerProducts[_farmer];
-  	}
+    function getFarmerProducts(address _farmer) public view returns (uint256[] memory) {
+        return farmerProducts[_farmer];
+    }
 
-  	// Lấy sản phẩm đã mua
-  	function getUserPurchases(address _user) public view returns (uint256[] memory) {
-      	return userPurchases[_user];
-  	}
+    // Lấy danh sách mua hàng chi tiết (trả về mảng Struct)
+    function getUserPurchases(address _user) public view returns (Purchase[] memory) {
+        return userPurchases[_user];
+    }
 
-  	// Lấy thông tin user
-  	function getUserInfo(address _user) public view returns (
-    	  string memory, string memory, uint256, bool
-  	) {
-      	User memory u = users[_user];
-      	return (u.name, u.role, u.joinDate, u.isRegistered);
-  	}
-
-  	// Kiểm tra user đã đăng ký chưa
-  	function isUserRegistered(address _user) public view returns (bool) {
-      	return users[_user].isRegistered;
-  	}
+    function isUserRegistered(address _user) public view returns (bool) {
+        return users[_user].isRegistered;
+    }
+    
+    function getUserInfo(address _user) public view returns (string memory, string memory, uint256, bool) {
+        User memory u = users[_user];
+        return (u.name, u.role, u.joinDate, u.isRegistered);
+    }
 }

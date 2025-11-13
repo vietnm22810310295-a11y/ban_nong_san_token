@@ -15,13 +15,13 @@ const userSchema = new mongoose.Schema({
   email: {
     type: String,
     unique: true,
-    sparse: true, // Cho phép nhiều 'null' nhưng email phải là duy nhất
+    sparse: true, // Cho phép nhiều 'null' nhưng nếu có email thì phải là duy nhất
     trim: true,
     lowercase: true
   },
   role: {
     type: String,
-    enum: ['farmer', 'buyer', 'admin'],
+    enum: ['farmer', 'buyer', 'admin'], // Đã có quyền Admin
     required: [true, 'Vai trò là bắt buộc']
   },
   phone: {
@@ -40,8 +40,9 @@ const userSchema = new mongoose.Schema({
   timestamps: true // Tự động thêm createdAt và updatedAt
 });
 
-// Index để tìm kiếm nhanh theo vai trò
+// Index để tìm kiếm nhanh theo vai trò và địa chỉ ví
 userSchema.index({ role: 1 });
+userSchema.index({ walletAddress: 1 });
 
 const User = mongoose.model('User', userSchema);
 
