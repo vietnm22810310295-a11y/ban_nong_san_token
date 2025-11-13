@@ -3,17 +3,17 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
 import { useWeb3 } from '../contexts/Web3Context';
 import { useAuth } from '../contexts/AuthContext';
-import { productAPI } from '../services/api';
+import { productAPI, paymentAPI } from '../services/api'; // Import thêm paymentAPI
 import LoadingSpinner from '../components/LoadingSpinner';
 
 const CartPage = () => {
-  const { cartItems, removeFromCart, updateQuantity, clearCart } = useCart();
+  const { cartItems, removeFromCart, updateQuantity, clearCart, cartCount } = useCart();
   const { isConnected, buyProductOnChain, account, connectWallet } = useWeb3();
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
   const [processing, setProcessing] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState('crypto'); // 'crypto' | 'cash'
+  const [paymentMethod, setPaymentMethod] = useState('crypto'); // 'crypto' | 'cash' | 'vnpay'
 
   // Tính tổng tiền
   const totalETH = cartItems.reduce((total, item) => total + (parseFloat(item.price) * item.quantity), 0).toFixed(4);
@@ -29,31 +29,21 @@ const CartPage = () => {
     try {
       // --- THANH TOÁN BẰNG CRYPTO (ETH) ---
       if (paymentMethod === 'crypto') {
-        if (!isConnected) {
-            await connectWallet();
-            setProcessing(false);
-            return;
-        }
-
+        if (!isConnected) await connectWallet();
         if (!window.confirm(`Xác nhận thanh toán ${totalETH} ETH cho ${cartItems.length} sản phẩm?`)) {
             setProcessing(false);
             return;
         }
 
-        // Lặp qua từng sản phẩm để mua (Vì contract mua lẻ)
         for (const item of cartItems) {
-            console.log(`Đang mua: ${item.name}`);
             const result = await buyProductOnChain(item.blockchainId, item.quantity);
-            
             if (result.success) {
                 await productAPI.updateProduct(item._id, {
                     txHash: result.transactionHash,
                     buyer: account,
                     quantitySold: item.quantity
                 });
-            } else {
-                throw new Error(`Lỗi mua sản phẩm ${item.name}: ${result.error}`);
-            }
+            } else { throw new Error(`Lỗi mua ${item.name}: ${result.error}`); }
         }
       } 
       // --- THANH TOÁN BẰNG TIỀN MẶT ---
@@ -62,16 +52,45 @@ const CartPage = () => {
             setProcessing(false);
             return;
         }
-
         for (const item of cartItems) {
-            // Gọi API request cash
             await productAPI.requestCashPurchase(item._id);
-            // Lưu ý: Logic backend hiện tại chưa hỗ trợ gửi số lượng cho Cash Purchase (cần nâng cấp thêm nếu muốn chuẩn 100%)
-            // Nhưng tạm thời vẫn sẽ chuyển trạng thái sang cash-pending
+        }
+      }
+      // --- [MỚI] THANH TOÁN BẰNG VNPAY ---
+      else if (paymentMethod === 'vnpay') {
+        if (!totalVND || totalVND < 1000) {
+            throw new Error("Đơn hàng VNPAY phải có giá trị tối thiểu 1,000 VND.");
+        }
+        
+        // 1. Tạo URL trả về (Tự động lấy localhost hoặc Vercel)
+        const RETURN_URL = `${window.location.origin}/vnpay-return`;
+        
+        // 2. Thông tin đơn hàng
+        const orderInfo = `Thanh toan ${cartCount} san pham (Nong San Blockchain)`;
+        const orderId = `NSB_${Date.now()}`; // Mã đơn hàng duy nhất
+        const amount = totalVND;
+
+        // 3. Lưu giỏ hàng vào Session (để trang Return biết mua gì)
+        sessionStorage.setItem('pendingVnpayOrder', JSON.stringify(cartItems));
+
+        // 4. Gọi API Backend để lấy link VNPay
+        const response = await paymentAPI.createPaymentUrl({
+            amount,
+            orderInfo,
+            orderId,
+            vnp_ReturnUrl: RETURN_URL // [FIX] Gửi URL động lên backend
+        });
+
+        if (response.data.success) {
+            // 5. Chuyển hướng người dùng sang VNPay
+            window.location.href = response.data.url;
+            return; // Dừng hàm ở đây
+        } else {
+            throw new Error(response.data.message || "Không thể tạo link VNPay");
         }
       }
 
-      // Thành công chung
+      // Thông báo thành công (Chung cho ETH và Tiền mặt)
       alert("Đặt hàng thành công! 🎉");
       clearCart();
       navigate('/my-purchases');
@@ -147,6 +166,10 @@ const CartPage = () => {
                         <input type="radio" name="payment" value="cash" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} className="text-blue-600 focus:ring-blue-500" />
                         <span className="ml-3 font-medium">Tiền mặt (Khi nhận hàng)</span>
                     </label>
+                    <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition ${paymentMethod === 'vnpay' ? 'border-red-500 bg-red-50' : 'hover:bg-gray-50'}`}>
+                        <input type="radio" name="payment" value="vnpay" checked={paymentMethod === 'vnpay'} onChange={() => setPaymentMethod('vnpay')} className="text-red-600 focus:ring-red-500" />
+                        <span className="ml-3 font-medium">VNPAY (Thẻ nội địa)</span>
+                    </label>
                 </div>
             </div>
 
@@ -154,10 +177,14 @@ const CartPage = () => {
               <div className="flex justify-between items-center">
                 <span className="text-gray-600">Tổng cộng:</span>
                 <div className="text-right">
-                    {paymentMethod === 'crypto' ? (
+                    {paymentMethod === 'crypto' && (
                         <div className="text-2xl font-bold text-green-600">{totalETH} ETH</div>
-                    ) : (
+                    )}
+                    {paymentMethod === 'cash' && (
                         <div className="text-2xl font-bold text-blue-600">{new Intl.NumberFormat('vi-VN').format(totalVND)} đ</div>
+                    )}
+                    {paymentMethod === 'vnpay' && (
+                        <div className="text-2xl font-bold text-red-600">{new Intl.NumberFormat('vi-VN').format(totalVND)} đ</div>
                     )}
                 </div>
               </div>
@@ -166,15 +193,16 @@ const CartPage = () => {
             <button
               onClick={handleCheckout}
               disabled={processing}
-              className={`w-full text-white py-3 rounded-lg font-bold transition flex justify-center items-center ${paymentMethod === 'crypto' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+              className={`w-full text-white py-3 rounded-lg font-bold transition flex justify-center items-center 
+                ${paymentMethod === 'crypto' ? 'bg-green-600 hover:bg-green-700' : ''}
+                ${paymentMethod === 'cash' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                ${paymentMethod === 'vnpay' ? 'bg-red-600 hover:bg-red-700' : ''}
+              `}
             >
               {processing ? (
-                <>
-                  <LoadingSpinner size="small" />
-                  <span className="ml-2">Đang xử lý...</span>
-                </>
+                <><LoadingSpinner size="small" /><span className="ml-2">Đang xử lý...</span></>
               ) : (
-                paymentMethod === 'crypto' ? 'Thanh toán ngay (ETH)' : 'Đặt hàng (Tiền mặt)'
+                paymentMethod === 'crypto' ? 'Thanh toán (ETH)' : (paymentMethod === 'cash' ? 'Đặt hàng (Tiền mặt)' : 'Thanh toán (VNPAY)')
               )}
             </button>
           </div>
