@@ -4,8 +4,8 @@ const crypto = require('crypto');
 
 // --- Cấu hình Test VNPay ---
 // Bạn có thể giữ nguyên mã test này để demo
-const tmnCode = "24J5765C"; 
-const secretKey = "QWERYUIOPASDFGHJKLZXCVBNM123456"; 
+const tmnCode = "GIU01VA3"; 
+const secretKey = "ZDN38F3AQBN15KDVECUJRZU122UCTKWL"; 
 const vnpUrl = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html";
 // ----------------------------
 
