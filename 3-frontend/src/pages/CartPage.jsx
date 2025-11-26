@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
 import { useWeb3 } from '../contexts/Web3Context';
 import { useAuth } from '../contexts/AuthContext';
-import { productAPI, paymentAPI } from '../services/api'; // Import thêm paymentAPI
+import { productAPI, paymentAPI } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 const CartPage = () => {
@@ -13,7 +13,7 @@ const CartPage = () => {
   const navigate = useNavigate();
 
   const [processing, setProcessing] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState('crypto'); // 'crypto' | 'cash' | 'vnpay'
+  const [paymentMethod, setPaymentMethod] = useState('crypto'); 
 
   // Tính tổng tiền
   const totalETH = cartItems.reduce((total, item) => total + (parseFloat(item.price) * item.quantity), 0).toFixed(4);
@@ -25,6 +25,7 @@ const CartPage = () => {
     if (cartItems.length === 0) return alert("Giỏ hàng trống.");
 
     setProcessing(true);
+    let latestTxHash = ""; // Biến để lưu mã giao dịch cuối cùng (hoặc dùng mảng nếu muốn lưu tất cả)
 
     try {
       // --- THANH TOÁN BẰNG CRYPTO (ETH) ---
@@ -35,9 +36,13 @@ const CartPage = () => {
             return;
         }
 
+        // Tạo bản sao danh sách items để gửi sang hóa đơn trước khi clearCart
+        const purchasedItems = [...cartItems]; 
+
         for (const item of cartItems) {
             const result = await buyProductOnChain(item.blockchainId, item.quantity);
             if (result.success) {
+                latestTxHash = result.transactionHash; // Lưu hash giao dịch
                 await productAPI.updateProduct(item._id, {
                     txHash: result.transactionHash,
                     buyer: account,
@@ -45,6 +50,23 @@ const CartPage = () => {
                 });
             } else { throw new Error(`Lỗi mua ${item.name}: ${result.error}`); }
         }
+
+        // [SỬA ĐỔI QUAN TRỌNG] Điều hướng sang trang Invoice thay vì MyPurchases
+        alert("Đặt hàng thành công! 🎉");
+        clearCart();
+        
+        navigate('/invoice', {
+          state: {
+            orderData: {
+              items: purchasedItems, // Gửi danh sách sản phẩm
+              totalETH: totalETH,
+              buyer: account,
+              txHash: latestTxHash,
+              paymentMethod: 'crypto',
+              date: new Date().toISOString()
+            }
+          }
+        });
       } 
       // --- THANH TOÁN BẰNG TIỀN MẶT ---
       else if (paymentMethod === 'cash') {
@@ -52,48 +74,56 @@ const CartPage = () => {
             setProcessing(false);
             return;
         }
+        
+        const purchasedItems = [...cartItems];
+
         for (const item of cartItems) {
             await productAPI.requestCashPurchase(item._id);
         }
+
+        alert("Đặt hàng thành công! Vui lòng chuẩn bị tiền mặt khi nhận hàng.");
+        clearCart();
+        
+        // Điều hướng sang Invoice cho tiền mặt luôn
+        navigate('/invoice', {
+            state: {
+              orderData: {
+                items: purchasedItems,
+                totalVND: totalVND,
+                buyer: "Khách hàng (Tiền mặt)",
+                paymentMethod: 'cash',
+                date: new Date().toISOString()
+              }
+            }
+          });
       }
-      // --- [MỚI] THANH TOÁN BẰNG VNPAY ---
+      // --- THANH TOÁN BẰNG VNPAY ---
       else if (paymentMethod === 'vnpay') {
         if (!totalVND || totalVND < 1000) {
             throw new Error("Đơn hàng VNPAY phải có giá trị tối thiểu 1,000 VND.");
         }
         
-        // 1. Tạo URL trả về (Tự động lấy localhost hoặc Vercel)
         const RETURN_URL = `${window.location.origin}/vnpay-return`;
-        
-        // 2. Thông tin đơn hàng
         const orderInfo = `Thanh toan ${cartCount} san pham (Nong San Blockchain)`;
-        const orderId = `NSB_${Date.now()}`; // Mã đơn hàng duy nhất
+        const orderId = `NSB_${Date.now()}`; 
         const amount = totalVND;
 
-        // 3. Lưu giỏ hàng vào Session (để trang Return biết mua gì)
         sessionStorage.setItem('pendingVnpayOrder', JSON.stringify(cartItems));
 
-        // 4. Gọi API Backend để lấy link VNPay
         const response = await paymentAPI.createPaymentUrl({
             amount,
             orderInfo,
             orderId,
-            vnp_ReturnUrl: RETURN_URL // [FIX] Gửi URL động lên backend
+            vnp_ReturnUrl: RETURN_URL 
         });
 
         if (response.data.success) {
-            // 5. Chuyển hướng người dùng sang VNPay
             window.location.href = response.data.url;
-            return; // Dừng hàm ở đây
+            return; 
         } else {
             throw new Error(response.data.message || "Không thể tạo link VNPay");
         }
       }
-
-      // Thông báo thành công (Chung cho ETH và Tiền mặt)
-      alert("Đặt hàng thành công! 🎉");
-      clearCart();
-      navigate('/my-purchases');
 
     } catch (error) {
       console.error(error);
