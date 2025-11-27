@@ -99,17 +99,36 @@ const getProduct = async (req, res) => {
   }
 };
 
-// @desc    Tạo sản phẩm mới
+// @desc    Tạo sản phẩm mới (Đã thêm Log để Debug lỗi 400)
 const createProduct = async (req, res) => {
   try {
+    // 1. In ra dữ liệu Frontend gửi lên để kiểm tra
+    console.log("---------------------------------------------");
+    console.log("📥 [DEBUG] Đang tạo sản phẩm mới...");
+    console.log("📦 Body nhận được:", req.body);
+
     const {
       blockchainId, name, productType, description, harvestDate,
       region, farmName, price, priceVND, isOrganic, images, certifications,
       quantity, unit
     } = req.body;
 
-    if (!blockchainId || !name || !productType || !harvestDate || !region || !price || !priceVND) {
-      return res.status(400).json({ success: false, message: 'Thiếu thông tin bắt buộc' });
+    // 2. Kiểm tra từng trường quan trọng và báo lỗi chi tiết
+    const missingFields = [];
+    if (!blockchainId) missingFields.push('blockchainId');
+    if (!name) missingFields.push('name');
+    if (!productType) missingFields.push('productType');
+    if (!harvestDate) missingFields.push('harvestDate');
+    if (!region) missingFields.push('region');
+    if (!price) missingFields.push('price');
+    if (!priceVND) missingFields.push('priceVND');
+
+    if (missingFields.length > 0) {
+      console.error("❌ [ERROR] Thiếu các trường bắt buộc:", missingFields);
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Thiếu thông tin: ' + missingFields.join(', ') 
+      });
     }
 
     if (req.user.role !== 'farmer') {
@@ -118,7 +137,8 @@ const createProduct = async (req, res) => {
 
     const existingProduct = await Product.findOne({ blockchainId });
     if (existingProduct) {
-      return res.status(400).json({ success: false, message: 'Sản phẩm đã tồn tại' });
+      console.error("❌ [ERROR] Trùng Blockchain ID:", blockchainId);
+      return res.status(400).json({ success: false, message: 'Sản phẩm đã tồn tại (Trùng ID Blockchain)' });
     }
 
     const product = await Product.create({
@@ -137,12 +157,14 @@ const createProduct = async (req, res) => {
       approvalStatus: 'pending'
     });
 
+    console.log("✅ Tạo sản phẩm thành công trên DB:", product._id);
     res.status(201).json({
       success: true,
       message: 'Đăng sản phẩm thành công! Vui lòng chờ Admin duyệt.',
       data: product
     });
   } catch (error) {
+    console.error("❌ [SERVER ERROR]:", error);
     if (error.name === 'ValidationError') {
         return res.status(400).json({ success: false, message: 'Dữ liệu lỗi: ' + Object.values(error.errors).map(e => e.message).join(', ') });
     }

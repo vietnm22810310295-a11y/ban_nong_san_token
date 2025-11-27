@@ -9499,12 +9499,12 @@
     "1337": {
       "events": {},
       "links": {},
-      "address": "0x45FdB93C530798977Ee738a031C3Df10a0b2A3D3",
-      "transactionHash": "0x4d104eedc32bae67d95b8d31d95d92e6917343193a250be551879a652a9d36a0"
+      "address": "0xB398acE78464384e9D32eDF02F8AFD360811198F",
+      "transactionHash": "0x288752c56cb4d9660c555b93655c0331c27a2663f29a6efcee0808d76ff30e92"
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2025-11-26T08:20:22.602Z",
+  "updatedAt": "2025-11-27T02:26:42.718Z",
   "networkType": "ethereum",
   "devdoc": {
     "kind": "dev",
