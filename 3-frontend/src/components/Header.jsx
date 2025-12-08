@@ -178,11 +178,11 @@ const Header = () => {
                       {user?.role === 'admin' && (
                         <>
                           <Link to="/admin" onClick={() => setIsDropdownOpen(false)} className="block px-4 py-2 text-red-600 hover:bg-red-50 hover:text-red-700 font-bold border-b">
-                             🛡️ Trang Quản Trị (Admin)
+                              Trang Quản Trị (Admin)
                           </Link>
                           {/* Admin cũng có thể bán hàng -> hiển thị link tới Farmer Dashboard */}
                           <Link to="/farmer" onClick={() => setIsDropdownOpen(false)} className="block px-4 py-2 text-gray-700 hover:bg-green-50 hover:text-green-600 font-medium">
-                             🏪 Kênh Bán Hàng (Dashboard)
+                              Kênh Bán Hàng (Dashboard)
                           </Link>
                         </>
                       )}
@@ -197,12 +197,12 @@ const Header = () => {
                       {/* Menu dành cho NGƯỜI MUA */}
                       {user?.role === 'buyer' && (
                         <Link to="/my-purchases" onClick={() => setIsDropdownOpen(false)} className="block px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-green-600">
-                          📦 Hàng đã mua
+                           Hàng đã mua
                         </Link>
                       )}
 
                       <button onClick={() => { setIsSettingsOpen(true); setIsDropdownOpen(false); }} className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-green-600 border-t">
-                        ⚙️ Cài đặt thông tin
+                         Cài đặt thông tin
                       </button>
                       <button onClick={() => { logout(); setIsDropdownOpen(false); }} className="block w-full text-left px-4 py-2 text-red-600 hover:bg-red-50">
                         🚪 Đăng xuất

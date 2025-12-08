@@ -487,8 +487,8 @@ const FarmerDashboard = () => {
                                 <h4 className="text-lg font-bold text-gray-900 text-red-600">{product.name}</h4>
                                 <p className="text-sm text-gray-700 mt-1"><strong>Lý do hoàn tiền:</strong> "{order.refundReason}"</p>
                                 <div className="mt-2 text-sm text-gray-600">
-                                    <p>💰 Số tiền hoàn: <strong>{parseFloat(order.totalPrice).toFixed(4)} ETH</strong></p>
-                                    <p>📦 Số lượng: {order.quantity} {product.unit}</p>
+                                    <p> Số tiền hoàn: <strong>{parseFloat(order.totalPrice).toFixed(4)} ETH</strong></p>
+                                    <p> Số lượng: {order.quantity} {product.unit}</p>
                                     <p className="text-xs mt-1 text-gray-400">Người mua: {order.buyer}</p>
                                 </div>
                             </div>

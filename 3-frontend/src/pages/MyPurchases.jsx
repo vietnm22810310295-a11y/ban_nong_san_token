@@ -85,7 +85,7 @@ const MyPurchases = () => {
   return (
     <>
       <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">📦 Lịch sử mua hàng</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-6"> Lịch sử mua hàng</h1>
 
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">

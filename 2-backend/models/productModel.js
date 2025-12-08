@@ -86,20 +86,19 @@ const productSchema = new mongoose.Schema(
     unit: {
       type: String,
       default: 'kg',
-      enum: ['kg', 'tấn', 'tạ', 'bao', 'lô']
+      enum: ['kg', 'tấn', 'tạ', 'bao', 'lô', 'yến']
     },
     isSold: {
       type: Boolean,
       default: false
     },
     // --- QUẢN LÝ DUYỆT BÀI (ADMIN) ---
-    // Tách riêng status duyệt khỏi status giao dịch để tránh lỗi logic cũ
     approvalStatus: {
         type: String,
         enum: ['pending', 'approved', 'rejected'],
-        default: 'pending' // Mặc định đăng lên là Chờ duyệt, chưa hiện trang chủ
+        default: 'pending' 
     },
-    // Status giao dịch (Giữ nguyên logic cũ của bạn)
+    // Status giao dịch
     status: {
       type: String,
       enum: ['available', 'sold', 'pending', 'refund-requested', 'refunded', 'cash-pending'],
@@ -109,6 +108,12 @@ const productSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: null
+    },
+    // [QUAN TRỌNG] Thêm trường này để lưu ví người mua khi chọn Tiền mặt
+    buyer: {
+      type: String,
+      default: null,
+      trim: true
     }
   },
   {
@@ -121,7 +126,7 @@ productSchema.index({ farmerWallet: 1 });
 productSchema.index({ productType: 1 });
 productSchema.index({ isSold: 1 });
 productSchema.index({ region: 1 });
-productSchema.index({ approvalStatus: 1 }); // Index mới để lọc bài đã duyệt nhanh
+productSchema.index({ approvalStatus: 1 }); 
 productSchema.index({ createdAt: -1 });
 productSchema.index({ price: 1 });
 

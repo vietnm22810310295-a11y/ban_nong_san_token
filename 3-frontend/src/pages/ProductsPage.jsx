@@ -243,17 +243,17 @@ const ProductsPage = () => {
 
         <div className="space-y-2 mb-4">
           <div className="flex items-center text-sm text-gray-600">
-            <span className="font-medium w-20">🏞️ Vùng:</span>
+            <span className="font-medium w-20"> Vùng:</span>
             <span className="ml-2 truncate" title={product.region}>{product.region}</span>
           </div>
           <div className="flex items-center text-sm text-gray-600">
-            <span className="font-medium w-20">📅 Thu hoạch:</span>
+            <span className="font-medium w-20"> Thu hoạch:</span>
             <span className="ml-2">
               {product.harvestDate ? new Date(product.harvestDate).toLocaleDateString('vi-VN') : 'Không có'}
             </span>
           </div>
           <div className="flex items-center text-sm text-gray-600">
-            <span className="font-medium w-20">📦 Tồn kho:</span>
+            <span className="font-medium w-20"> Tồn kho:</span>
             <span className={`ml-2 font-bold ${product.quantity > 0 ? 'text-blue-600' : 'text-red-600'}`}>
                 {product.quantity} {product.unit || 'kg'}
             </span>

@@ -432,55 +432,81 @@ const getFarmerRefundRequests = async (req, res) => {
 };
 
 // @desc    Mua tiền mặt
+// [ĐÃ SỬA] Lưu Wallet của người mua vào sản phẩm để sau này xác nhận
 const requestCashPurchase = async (req, res) => {
   try {
     const { mongoId } = req.params;
     const product = await Product.findById(mongoId);
-    if (!product) return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
-    if (product.farmerWallet === req.user.walletAddress) return res.status(400).json({ success: false, message: 'Không thể tự mua' });
     
-    if (product.status !== 'available') return res.status(400).json({ success: false, message: 'Đã bán hoặc chờ xử lý' });
+    if (!product) return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
+    if (product.farmerWallet === req.user.walletAddress) return res.status(400).json({ success: false, message: 'Không thể tự mua sản phẩm của mình' });
+    
+    if (product.status !== 'available') return res.status(400).json({ success: false, message: 'Sản phẩm đã bán hoặc đang chờ xử lý' });
 
     product.status = 'cash-pending';
-    product.buyer = req.user.id; 
-    product.currentOwner = req.user.walletAddress; 
+    
+    // [FIX] Lưu Wallet Address của người mua (thay vì ID) để sau này tạo Order đúng người
+    product.buyer = req.user.walletAddress; 
+    
     await product.save();
-    res.json({ success: true, message: 'Đã yêu cầu mua tiền mặt', data: product });
-  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+    
+    res.json({ success: true, message: 'Đã gửi yêu cầu mua tiền mặt. Vui lòng liên hệ người bán.', data: product });
+  } catch (e) { 
+    res.status(500).json({ success: false, message: e.message }); 
+  }
 };
 
 // @desc    Xác nhận tiền mặt
+// [ĐÃ SỬA] Tạo Order với buyer lấy từ sản phẩm (người mua thực) chứ không phải người xác nhận (người bán)
 const confirmCashPurchase = async (req, res) => {
   try {
     const { mongoId } = req.params;
     const product = await Product.findById(mongoId);
+    
     if (!product) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
-    if (product.farmerWallet !== req.user.walletAddress) return res.status(403).json({ success: false, message: 'Không phải người bán' });
-    if (product.status !== 'cash-pending') return res.status(400).json({ success: false, message: 'Sai trạng thái' });
+    
+    // Kiểm tra quyền: Chỉ người bán (Farmer) mới được xác nhận
+    if (product.farmerWallet !== req.user.walletAddress) {
+        return res.status(403).json({ success: false, message: 'Bạn không phải người bán sản phẩm này' });
+    }
+    
+    if (product.status !== 'cash-pending') {
+        return res.status(400).json({ success: false, message: 'Sản phẩm không ở trạng thái chờ tiền mặt' });
+    }
 
+    // 1. Cập nhật trạng thái sản phẩm
     product.status = 'sold';
     product.isSold = true;
     await product.save();
 
+    // 2. Tạo Order để hiện trong "Hàng đã mua" của User
+    // [FIX] Sử dụng product.buyer (Ví của người mua đã lưu ở bước request)
     await Order.create({
-        buyer: req.user.walletAddress, 
+        buyer: product.buyer, 
         product: product._id,
         quantity: product.quantity, 
-        totalPrice: 0, 
+        totalPrice: product.priceVND || 0, // Lưu giá VND nếu có
         paymentMethod: 'cash',
         status: 'completed'
     });
 
+    // 3. Gửi mail thông báo
     try {
+        // product.buyer là wallet address, cần tìm User để lấy email
+        const buyerUser = await User.findOne({ walletAddress: product.buyer });
         const farmer = await User.findOne({ walletAddress: req.user.walletAddress });
-        const buyer = await User.findById(product.buyer);
-        sendTransactionEmails(buyer?.email, farmer?.email, {
-            name: product.name, price: product.price, txHash: 'Tiền mặt trực tiếp'
+        
+        sendTransactionEmails(buyerUser?.email, farmer?.email, {
+            name: product.name, 
+            price: product.priceVND ? `${product.priceVND.toLocaleString()} VND` : 'Tiền mặt', 
+            txHash: 'Tiền mặt trực tiếp'
         });
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error('Lỗi gửi mail:', e); }
 
-    res.json({ success: true, message: 'Giao dịch thành công', data: product });
-  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+    res.json({ success: true, message: 'Xác nhận giao dịch thành công!', data: product });
+  } catch (e) { 
+    res.status(500).json({ success: false, message: e.message }); 
+  }
 };
 
 module.exports = {

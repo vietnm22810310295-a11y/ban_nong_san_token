@@ -104,7 +104,7 @@ const AdminDashboard = () => {
               <p className="text-3xl font-bold text-gray-800 mt-1">{stats.totalUsers}</p>
             </div>
             <div className="bg-blue-100 p-3 rounded-full text-blue-600">
-              👥
+              
             </div>
           </div>
           <div className="mt-4 text-sm text-gray-600">
@@ -119,7 +119,7 @@ const AdminDashboard = () => {
               <p className="text-3xl font-bold text-gray-800 mt-1">{stats.totalProducts}</p>
             </div>
             <div className="bg-green-100 p-3 rounded-full text-green-600">
-              📦
+              
             </div>
           </div>
           <div className="mt-4 text-sm text-gray-600">
@@ -134,7 +134,7 @@ const AdminDashboard = () => {
               <p className="text-3xl font-bold text-gray-800 mt-1">{stats.recentUsers?.length || 0}</p>
             </div>
             <div className="bg-purple-100 p-3 rounded-full text-purple-600">
-              🆕
+              
             </div>
           </div>
           <div className="mt-4 text-sm text-gray-600">
@@ -264,7 +264,7 @@ const AdminDashboard = () => {
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-green-800 flex items-center gap-2">
-            🛡️ Bảng Điều Khiển Admin
+             Bảng Điều Khiển Admin
           </h1>
           <div className="mt-4 md:mt-0 text-sm text-gray-500">
             Xin chào, <span className="font-bold text-gray-800">{user?.name}</span>
@@ -298,7 +298,7 @@ const AdminDashboard = () => {
               activeTab === 'users' ? 'bg-green-600 text-white shadow' : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
-            👥 Người Dùng
+             Người Dùng
           </button>
         </div>
 
