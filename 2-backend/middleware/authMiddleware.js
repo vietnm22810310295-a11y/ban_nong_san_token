@@ -68,4 +68,26 @@ const optionalAuth = async (req, res, next) => {
   }
 };
 
-module.exports = { authMiddleware, optionalAuth };
+// [THÊM MỚI] Middleware phân quyền (Role Based Access Control)
+// Cách dùng: router.post('/create', authMiddleware, restrictTo('farmer', 'admin'), createProduct);
+const restrictTo = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Người dùng chưa đăng nhập' 
+      });
+    }
+
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Bạn không có quyền thực hiện hành động này' 
+      });
+    }
+
+    next();
+  };
+};
+
+module.exports = { authMiddleware, optionalAuth, restrictTo };

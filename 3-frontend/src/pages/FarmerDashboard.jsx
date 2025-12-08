@@ -153,6 +153,7 @@ const FarmerDashboard = () => {
     e.preventDefault();
     if (!isConnected) return setAlertInfo({ isOpen: true, title: "Lỗi", message: "Chưa kết nối ví." });
     
+    // [LOGIC GIÁ VND] Đã tự động tính, nhưng vẫn check lại cho chắc
     if (!formData.priceVND || parseFloat(formData.priceVND) < 1000) {
         return setAlertInfo({ isOpen: true, title: "Lỗi", message: "Giá VND tối thiểu 1,000đ" });
     }
@@ -188,9 +189,28 @@ const FarmerDashboard = () => {
     }
   };
 
+  // [ĐÃ SỬA] Hàm xử lý nhập liệu với Logic quy đổi tỷ giá
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    
+    setFormData(prev => {
+      const updatedData = { ...prev, [name]: type === 'checkbox' ? checked : value };
+
+      // LOGIC TỰ ĐỘNG TÍNH TOÁN: ETH -> VND
+      if (name === 'price') {
+        const ethValue = parseFloat(value);
+        if (!isNaN(ethValue) && ethValue >= 0) {
+           // Tỷ giá: 1 ETH = 82,990,000 VND
+           const EXCHANGE_RATE = 82990000;
+           const calculatedVND = Math.floor(ethValue * EXCHANGE_RATE);
+           updatedData.priceVND = calculatedVND;
+        } else {
+           updatedData.priceVND = '';
+        }
+      }
+
+      return updatedData;
+    });
   };
 
   const handleDelete = async (product) => {
@@ -326,11 +346,31 @@ const FarmerDashboard = () => {
                 {/* Giá */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Giá (ETH) / 1 đơn vị *</label>
-                  <input type="number" step="0.0001" min="0" name="price" value={formData.price} onChange={handleInputChange} className="input-field mt-1 block w-full border rounded-md px-3 py-2" required />
+                  <input 
+                    type="number" 
+                    step="0.000001" 
+                    min="0" 
+                    name="price" 
+                    value={formData.price} 
+                    onChange={handleInputChange} 
+                    className="input-field mt-1 block w-full border rounded-md px-3 py-2 font-bold text-green-600" 
+                    required 
+                    placeholder="VD: 0.001"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">1 ETH = 82,990,000 VND</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Giá (VND) / 1 đơn vị *</label>
-                  <input type="number" step="1000" min="1000" name="priceVND" value={formData.priceVND} onChange={handleInputChange} className="input-field mt-1 block w-full border rounded-md px-3 py-2" required />
+                  <label className="block text-sm font-medium text-gray-700">Giá (VND) / 1 đơn vị (Tự động)</label>
+                  <input 
+                    type="number" 
+                    name="priceVND" 
+                    value={formData.priceVND} 
+                    onChange={handleInputChange} 
+                    className="input-field mt-1 block w-full border rounded-md px-3 py-2 bg-gray-100" 
+                    required 
+                    readOnly 
+                    placeholder="Tự động tính..."
+                  />
                 </div>
 
                 {/* Thông tin khác */}

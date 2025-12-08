@@ -11,12 +11,11 @@ contract AgriculturalMarketplace {
         string region;
         string farmName;
         address farmer;
-        address owner;      // Người đang giữ quyền bán (thường là farmer)
-        uint256 price;      // GIÁ TRÊN 1 ĐƠN VỊ (Ví dụ: 0.01 ETH / 1 kg)
+        address owner;      // Người đang giữ quyền bán
+        uint256 price;      // GIÁ TRÊN 1 ĐƠN VỊ
         bool isOrganic;
         bool isSold;        // True nếu quantity = 0
         uint256 createdAt;
-        // [THÊM MỚI] Quản lý tồn kho
         uint256 quantity;   // Số lượng còn lại
         string unit;        // Đơn vị (kg, tấn, tạ...)
     }
@@ -30,7 +29,7 @@ contract AgriculturalMarketplace {
         bool isRegistered;
     }
 
-    // [THÊM MỚI] Struct lưu lịch sử mua hàng chi tiết
+    // Struct lưu lịch sử mua hàng chi tiết
     struct Purchase {
         uint256 productId;
         uint256 quantity;
@@ -40,12 +39,10 @@ contract AgriculturalMarketplace {
 
     uint256 public productCount = 0;
     uint256 public userCount = 0;
-    
+
     mapping(uint256 => Product) public products;
     mapping(address => User) public users;
     mapping(address => uint256[]) public farmerProducts;
-    
-    // [SỬA] Lưu struct Purchase thay vì chỉ ID sản phẩm
     mapping(address => Purchase[]) public userPurchases;
 
     event UserRegistered(address userAddress, string name, string role);
@@ -85,6 +82,7 @@ contract AgriculturalMarketplace {
             joinDate: block.timestamp,
             isRegistered: true
         });
+
         userCount++;
         emit UserRegistered(msg.sender, _name, _role);
     }
@@ -101,12 +99,18 @@ contract AgriculturalMarketplace {
         uint256 _quantity,
         string memory _unit
     ) public onlyRegistered {
-        require(keccak256(abi.encodePacked(users[msg.sender].role)) == keccak256(abi.encodePacked("farmer")), "Only farmers can register products");
+        // [ĐÃ SỬA] Cho phép cả "farmer" VÀ "admin" được đăng sản phẩm
+        bytes32 roleHash = keccak256(abi.encodePacked(users[msg.sender].role));
+        require(
+            roleHash == keccak256(abi.encodePacked("farmer")) || 
+            roleHash == keccak256(abi.encodePacked("admin")), 
+            "Only farmers or admins can register products"
+        );
+
         require(_pricePerUnit > 0, "Price must be greater than 0");
         require(_quantity > 0, "Quantity must be greater than 0");
 
         productCount++;
-        
         products[productCount] = Product({
             id: productCount,
             name: _name,
@@ -128,10 +132,9 @@ contract AgriculturalMarketplace {
         emit ProductRegistered(productCount, _name, msg.sender, _quantity);
     }
 
-    // [QUAN TRỌNG] Mua sản phẩm theo số lượng
+    // Mua sản phẩm theo số lượng
     function buyProduct(uint256 _productId, uint256 _quantityToBuy) public payable onlyRegistered {
         require(_productId > 0 && _productId <= productCount, "Product does not exist");
-        
         Product storage product = products[_productId];
         
         require(!product.isSold, "Product is sold out");
@@ -150,7 +153,7 @@ contract AgriculturalMarketplace {
             product.isSold = true;
         }
 
-        // 3. Chuyển tiền cho người bán (Farmer)
+        // 3. Chuyển tiền cho người bán (Farmer hoặc Admin)
         payable(product.owner).transfer(totalCost);
 
         // 4. Hoàn tiền thừa (nếu có)
@@ -198,7 +201,7 @@ contract AgriculturalMarketplace {
         return farmerProducts[_farmer];
     }
 
-    // Lấy danh sách mua hàng chi tiết (trả về mảng Struct)
+    // Lấy danh sách mua hàng chi tiết
     function getUserPurchases(address _user) public view returns (Purchase[] memory) {
         return userPurchases[_user];
     }

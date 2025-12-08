@@ -2,7 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { Web3Provider } from './contexts/Web3Context';
-import { CartProvider } from './contexts/CartContext'; // [MỚI] Import giỏ hàng
+import { CartProvider } from './contexts/CartContext';
 import Header from './components/Header';
 import ProtectedRoute from './components/ProtectedRoute';
 import HomePage from './pages/HomePage';
@@ -17,13 +17,13 @@ import VnPayReturn from './pages/VnPayReturn';
 import Chatbot from './components/Chatbot';
 import './index.css';
 import AdminDashboard from './pages/AdminDashboard'; 
-import CartPage from './pages/CartPage'; // [MỚI] Import trang giỏ hàng
+import CartPage from './pages/CartPage';
 
 function App() {
   return (
     <Web3Provider>
       <AuthProvider>
-        <CartProvider> {/* [MỚI] Bọc toàn bộ app bằng CartProvider */}
+        <CartProvider>
           <Router>
             <div className="min-h-screen bg-gray-50">
               <Header />
@@ -35,7 +35,7 @@ function App() {
                   <Route path="/register" element={<RegisterPage />} />
                   <Route path="/products" element={<ProductsPage />} />
                   <Route path="/vnpay-return" element={<VnPayReturn />} />
-                  <Route path="/cart" element={<CartPage />} /> {/* [MỚI] Thêm route giỏ hàng */}
+                  <Route path="/cart" element={<CartPage />} />
                   
                   {/* Protected Routes */}
                   <Route 
@@ -46,14 +46,17 @@ function App() {
                       </ProtectedRoute>
                     } 
                   />
+                  
+                  {/* [ĐÃ SỬA] Cho phép cả 'farmer' và 'admin' vào Dashboard */}
                   <Route 
                     path="/farmer" 
                     element={
-                      <ProtectedRoute requiredRole="farmer">
+                      <ProtectedRoute requiredRole={['farmer', 'admin']}>
                         <FarmerDashboard />
                       </ProtectedRoute>
                     } 
                   />
+                  
                   <Route 
                     path="/my-purchases" 
                     element={
@@ -96,7 +99,6 @@ function App() {
                 </Routes>
               </main>
 
-              {/* Footer */}
               <footer className="bg-white border-t mt-16">
                 <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
                   <div className="text-center text-gray-600">

@@ -2,13 +2,13 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useWeb3 } from '../contexts/Web3Context';
-import { useCart } from '../contexts/CartContext'; // [MỚI] Import CartContext
+import { useCart } from '../contexts/CartContext';
 import WalletConnect from './WalletConnect';
 
 const Header = () => {
   const { user, logout, isAuthenticated, updateUser } = useAuth();
   const { isConnected, account, getBalance } = useWeb3();
-  const { cartCount } = useCart(); // [MỚI] Lấy số lượng giỏ hàng
+  const { cartCount } = useCart();
   
   const [balance, setBalance] = useState('0.00');
   const [balanceLoading, setBalanceLoading] = useState(false);
@@ -141,7 +141,7 @@ const Header = () => {
                 )}
               </div>
 
-              {/* [MỚI] NÚT GIỎ HÀNG */}
+              {/* Nút Giỏ Hàng */}
               <Link to="/cart" className="relative group p-2">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-gray-600 group-hover:text-green-600 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -174,27 +174,38 @@ const Header = () => {
                     </div>
                     
                     <nav className="py-2">
+                      {/* [ĐÃ SỬA] Menu dành cho ADMIN */}
                       {user?.role === 'admin' && (
-                        <Link to="/admin" onClick={() => setIsDropdownOpen(false)} className="block px-4 py-2 text-gray-700 hover:bg-red-50 hover:text-red-600 font-bold border-b">
-                           🛡️ Trang Quản Trị (Admin)
+                        <>
+                          <Link to="/admin" onClick={() => setIsDropdownOpen(false)} className="block px-4 py-2 text-red-600 hover:bg-red-50 hover:text-red-700 font-bold border-b">
+                             🛡️ Trang Quản Trị (Admin)
+                          </Link>
+                          {/* Admin cũng có thể bán hàng -> hiển thị link tới Farmer Dashboard */}
+                          <Link to="/farmer" onClick={() => setIsDropdownOpen(false)} className="block px-4 py-2 text-gray-700 hover:bg-green-50 hover:text-green-600 font-medium">
+                             🏪 Kênh Bán Hàng (Dashboard)
+                          </Link>
+                        </>
+                      )}
+
+                      {/* Menu dành cho NÔNG DÂN */}
+                      {user?.role === 'farmer' && (
+                        <Link to="/farmer" onClick={() => setIsDropdownOpen(false)} className="block px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-green-600 font-medium">
+                          🌾 Farmer Dashboard
                         </Link>
                       )}
 
-                      {user?.role === 'farmer' && (
-                        <Link to="/farmer" onClick={() => setIsDropdownOpen(false)} className="block px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-green-600">
-                          Farmer Dashboard
-                        </Link>
-                      )}
+                      {/* Menu dành cho NGƯỜI MUA */}
                       {user?.role === 'buyer' && (
                         <Link to="/my-purchases" onClick={() => setIsDropdownOpen(false)} className="block px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-green-600">
-                          Hàng đã mua
+                          📦 Hàng đã mua
                         </Link>
                       )}
-                      <button onClick={() => { setIsSettingsOpen(true); setIsDropdownOpen(false); }} className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-green-600">
-                        Cài đặt thông tin
+
+                      <button onClick={() => { setIsSettingsOpen(true); setIsDropdownOpen(false); }} className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-green-600 border-t">
+                        ⚙️ Cài đặt thông tin
                       </button>
-                      <button onClick={() => { logout(); setIsDropdownOpen(false); }} className="block w-full text-left px-4 py-2 text-red-600 hover:bg-red-50 border-t">
-                        Đăng xuất
+                      <button onClick={() => { logout(); setIsDropdownOpen(false); }} className="block w-full text-left px-4 py-2 text-red-600 hover:bg-red-50">
+                        🚪 Đăng xuất
                       </button>
                     </nav>
                   </div>
@@ -230,7 +241,6 @@ const Header = () => {
                 </div>
               )}
 
-              {/* Form Fields */}
               <div>
                 <label className="block text-sm font-medium text-gray-500 mb-1">Họ và tên</label>
                 {isEditing ? (
@@ -270,7 +280,6 @@ const Header = () => {
               </div>
             </div>
 
-            {/* Buttons Action */}
             <div className="px-6 py-4 bg-gray-50 flex justify-end gap-3">
               {isEditing ? (
                 <>

@@ -1,9 +1,9 @@
 const Product = require('../models/productModel');
 const User = require('../models/userModel');
-const Order = require('../models/orderModel'); // [QUAN TRỌNG] Import Order Model
+const Order = require('../models/orderModel'); // Import Order Model
 const { sendTransactionEmails } = require('../utils/emailService');
 
-// @desc    Lấy tất cả sản phẩm (Chỉ hiện sản phẩm ĐÃ DUYỆT)
+// @desc    Lấy tất cả sản phẩm (Chỉ hiện sản phẩm ĐÃ DUYỆT cho khách xem)
 // @route   GET /api/products
 const getProducts = async (req, res) => {
   try {
@@ -99,13 +99,14 @@ const getProduct = async (req, res) => {
   }
 };
 
-// @desc    Tạo sản phẩm mới (Đã thêm Log để Debug lỗi 400)
+// @desc    Tạo sản phẩm mới (Đã sửa cho phép Admin)
 const createProduct = async (req, res) => {
   try {
     // 1. In ra dữ liệu Frontend gửi lên để kiểm tra
     console.log("---------------------------------------------");
     console.log("📥 [DEBUG] Đang tạo sản phẩm mới...");
     console.log("📦 Body nhận được:", req.body);
+    console.log("👤 User Role:", req.user.role);
 
     const {
       blockchainId, name, productType, description, harvestDate,
@@ -113,7 +114,7 @@ const createProduct = async (req, res) => {
       quantity, unit
     } = req.body;
 
-    // 2. Kiểm tra từng trường quan trọng và báo lỗi chi tiết
+    // 2. Kiểm tra các trường bắt buộc
     const missingFields = [];
     if (!blockchainId) missingFields.push('blockchainId');
     if (!name) missingFields.push('name');
@@ -131,8 +132,9 @@ const createProduct = async (req, res) => {
       });
     }
 
-    if (req.user.role !== 'farmer') {
-      return res.status(403).json({ success: false, message: 'Chỉ farmer mới có thể tạo sản phẩm' });
+    // [ĐÃ SỬA] Cho phép cả 'farmer' và 'admin' tạo sản phẩm
+    if (req.user.role !== 'farmer' && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền tạo sản phẩm' });
     }
 
     const existingProduct = await Product.findOne({ blockchainId });
@@ -141,11 +143,14 @@ const createProduct = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Sản phẩm đã tồn tại (Trùng ID Blockchain)' });
     }
 
+    // Tự động duyệt nếu là Admin đăng bài (hoặc vẫn để pending tùy bạn - ở đây mình để pending cho thống nhất quy trình)
+    const initialStatus = req.user.role === 'admin' ? 'approved' : 'pending';
+
     const product = await Product.create({
       blockchainId, name, productType, description,
       harvestDate: new Date(harvestDate),
       region, farmName,
-      farmerWallet: req.user.walletAddress,
+      farmerWallet: req.user.walletAddress, // Lưu ví của người tạo (Admin hoặc Farmer)
       currentOwner: req.user.walletAddress,
       price, priceVND,
       isOrganic: isOrganic || false,
@@ -154,13 +159,19 @@ const createProduct = async (req, res) => {
       quantity: quantity || 1,
       unit: unit || 'kg',
       status: 'available',
-      approvalStatus: 'pending'
+      approvalStatus: initialStatus // Admin đăng thì duyệt luôn, Farmer đăng thì chờ
     });
 
     console.log("✅ Tạo sản phẩm thành công trên DB:", product._id);
+    
+    // Thông báo khác nhau tùy role
+    const msg = req.user.role === 'admin' 
+        ? 'Đăng sản phẩm thành công (Đã tự động duyệt)!' 
+        : 'Đăng sản phẩm thành công! Vui lòng chờ duyệt.';
+
     res.status(201).json({
       success: true,
-      message: 'Đăng sản phẩm thành công! Vui lòng chờ Admin duyệt.',
+      message: msg,
       data: product
     });
   } catch (error) {
@@ -201,12 +212,18 @@ const approveProduct = async (req, res) => {
     }
 };
 
-// @desc    Lấy sản phẩm của farmer
+// @desc    Lấy sản phẩm của người bán (Farmer Dashboard)
 const getFarmerProducts = async (req, res) => {
   try {
-    if (req.user.role !== 'farmer') return res.status(403).json({ success: false, message: 'Chỉ farmer mới xem được' });
+    // [ĐÃ SỬA] Cho phép cả Admin xem danh sách sản phẩm mình đã đăng
+    if (req.user.role !== 'farmer' && req.user.role !== 'admin') {
+        return res.status(403).json({ success: false, message: 'Bạn không có quyền truy cập dashboard này' });
+    }
+
     const { status } = req.query;
+    // Chỉ lấy sản phẩm do CHÍNH user đó tạo (dựa vào walletAddress)
     const filter = { farmerWallet: req.user.walletAddress };
+    
     if (status && status !== 'all') filter.status = status;
 
     const products = await Product.find(filter).sort({ createdAt: -1 });
@@ -216,7 +233,7 @@ const getFarmerProducts = async (req, res) => {
   }
 };
 
-// @desc    Cập nhật sản phẩm (Xử lý Mua hàng -> Tạo Order)
+// @desc    Cập nhật sản phẩm
 const updateProduct = async (req, res) => {
   try {
     const { mongoId } = req.params; 
@@ -225,24 +242,22 @@ const updateProduct = async (req, res) => {
     
     if (!product) return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
 
-    const isFarmerOwner = product.farmerWallet === req.user.walletAddress;
-    const isBuyer = req.user.role === 'buyer' || req.user.role === 'admin';
+    // Kiểm tra quyền sở hữu: Người tạo (farmerWallet) == Người đang login
+    const isOwner = product.farmerWallet === req.user.walletAddress;
+    const isBuyer = req.user.role === 'buyer'; // Admin cũng có thể là buyer nếu muốn test mua
 
     // [QUAN TRỌNG] NGƯỜI MUA CẬP NHẬT (MUA HÀNG)
-    if (isBuyer && updateData.quantitySold) {
+    if (updateData.quantitySold) {
+        // Cho phép bất kỳ ai mua hàng (trừ chính chủ nếu muốn chặn, nhưng ở đây logic xử lý việc trừ kho)
         const qtySold = parseInt(updateData.quantitySold);
         
-        // 1. Trừ tồn kho
         product.quantity = Math.max(0, product.quantity - qtySold);
-        
-        // 2. Nếu hết hàng -> Đổi trạng thái sản phẩm
         if (product.quantity === 0) {
             product.status = 'sold';
             product.isSold = true;
         }
         await product.save();
 
-        // 3. TẠO ĐƠN HÀNG (ORDER)
         await Order.create({
             buyer: req.user.walletAddress,
             product: product._id,
@@ -253,7 +268,6 @@ const updateProduct = async (req, res) => {
             status: 'completed'
         });
 
-        // 4. Gửi mail
         try {
             const farmer = await User.findOne({ walletAddress: product.farmerWallet });
             sendTransactionEmails(req.user.email, farmer?.email, {
@@ -270,10 +284,11 @@ const updateProduct = async (req, res) => {
         });
     }
 
-    // Logic cho Farmer sửa
-    if (!isFarmerOwner) {
-        return res.status(403).json({ success: false, message: 'Không có quyền chỉnh sửa' });
+    // Logic cho Người Bán (Farmer/Admin) sửa thông tin sản phẩm
+    if (!isOwner) {
+        return res.status(403).json({ success: false, message: 'Bạn không có quyền chỉnh sửa sản phẩm này' });
     }
+
     delete updateData.blockchainId;
     delete updateData.farmerWallet;
     const updatedProduct = await Product.findByIdAndUpdate(mongoId, { ...updateData, updatedAt: new Date() }, { new: true });
@@ -291,7 +306,12 @@ const deleteProduct = async (req, res) => {
     const product = await Product.findById(mongoId); 
     
     if (!product) return res.status(404).json({ success: false, message: 'Không tìm thấy' });
-    if (product.farmerWallet !== req.user.walletAddress) return res.status(403).json({ success: false, message: 'Không có quyền xóa' });
+    
+    // Chỉ người tạo mới được xóa
+    if (product.farmerWallet !== req.user.walletAddress) {
+        return res.status(403).json({ success: false, message: 'Không có quyền xóa' });
+    }
+
     if (product.isSold) return res.status(400).json({ success: false, message: 'Không thể xóa sản phẩm đã bán' });
 
     await Product.findByIdAndDelete(mongoId);
@@ -312,12 +332,14 @@ const getProductRegions = async (req, res) => {
   res.json({ success: true, data: regions });
 };
 
-// @desc    Lấy lịch sử mua hàng (Lấy từ bảng Order)
+// @desc    Lấy lịch sử mua hàng
 const getMyPurchases = async (req, res) => {
   try {
-    if (req.user.role !== 'buyer') return res.status(403).json({ success: false, message: 'Chỉ buyer mới xem được' });
+    if (req.user.role !== 'buyer' && req.user.role !== 'admin') {
+       // Admin cũng có thể test mua hàng nên cho phép xem luôn
+       return res.status(403).json({ success: false, message: 'Chỉ buyer mới xem được' });
+    }
     
-    // Lấy tất cả đơn hàng của user từ bảng ORDER
     const orders = await Order.find({ buyer: req.user.walletAddress })
                               .populate('product') 
                               .sort({ createdAt: -1 });
@@ -332,18 +354,15 @@ const getMyPurchases = async (req, res) => {
   }
 };
 
-// @desc    [FIXED] Yêu cầu hoàn tiền (Cập nhật vào ORDER thay vì Product)
+// @desc    Yêu cầu hoàn tiền
 const requestRefund = async (req, res) => {
   try {
-    const { mongoId } = req.params; // Đây là ID của ORDER (hoặc Product ID tùy frontend gửi)
+    const { mongoId } = req.params; 
     const { reason } = req.body;
     if (!reason) return res.status(400).json({ success: false, message: 'Cần lý do' });
 
-    // Logic: Tìm Order để cập nhật trạng thái (Tránh cập nhật cả lô sản phẩm)
-    // TH1: Frontend gửi Order ID (Chuẩn nhất)
     let order = await Order.findById(mongoId);
     
-    // TH2: Frontend gửi Product ID (Dự phòng) -> Tìm order gần nhất của user này
     if (!order) {
         order = await Order.findOne({ 
             product: mongoId, 
@@ -351,7 +370,7 @@ const requestRefund = async (req, res) => {
         }).sort({ createdAt: -1 });
     }
 
-    if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng để hoàn tiền' });
+    if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
 
     if (order.buyer !== req.user.walletAddress) {
          return res.status(403).json({ success: false, message: 'Bạn không phải chủ đơn hàng này' });
@@ -365,25 +384,22 @@ const requestRefund = async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };
 
-// @desc    [FIXED] Chấp nhận hoàn tiền (Cập nhật vào ORDER)
+// @desc    Chấp nhận hoàn tiền
 const approveRefund = async (req, res) => {
   try {
-    const { mongoId } = req.params; // Order ID hoặc Product ID
-    
-    // Tìm order
+    const { mongoId } = req.params; 
     let order = await Order.findById(mongoId).populate('product');
     
-    // Nếu không tìm thấy order, thử tìm bằng product id (trường hợp frontend gửi product id)
     if (!order) {
-        // Logic này hơi rủi ro nếu có nhiều order cho 1 sp, nhưng tạm thời xử lý order mới nhất đang 'refund-requested'
         const product = await Product.findById(mongoId);
         if(product) {
              order = await Order.findOne({ product: mongoId, status: 'refund-requested' }).populate('product');
         }
     }
 
-    if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng cần hoàn tiền' });
+    if (!order) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
 
+    // Kiểm tra quyền: Người bán (Admin hoặc Farmer)
     if (order.product.farmerWallet !== req.user.walletAddress) {
         return res.status(403).json({ success: false, message: 'Bạn không phải người bán của đơn hàng này' });
     }
@@ -398,14 +414,12 @@ const approveRefund = async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };
 
-// @desc    [MỚI] Lấy danh sách yêu cầu hoàn tiền cho Farmer (Lấy từ Order)
+// @desc    Lấy danh sách yêu cầu hoàn tiền cho người bán (Farmer/Admin)
 const getFarmerRefundRequests = async (req, res) => {
     try {
-        // 1. Tìm tất cả sản phẩm của Farmer
         const products = await Product.find({ farmerWallet: req.user.walletAddress }).select('_id');
         const productIds = products.map(p => p._id);
 
-        // 2. Tìm Order có status 'refund-requested' chứa các sản phẩm đó
         const refundOrders = await Order.find({
             product: { $in: productIds },
             status: 'refund-requested'
@@ -425,8 +439,6 @@ const requestCashPurchase = async (req, res) => {
     if (!product) return res.status(404).json({ success: false, message: 'Không tìm thấy sản phẩm' });
     if (product.farmerWallet === req.user.walletAddress) return res.status(400).json({ success: false, message: 'Không thể tự mua' });
     
-    // Logic cũ (tạm thời giữ nguyên cho tiền mặt vì thường tiền mặt mua cả lô)
-    // Nếu muốn nâng cấp mua lẻ tiền mặt, cần sửa thêm Order cho tiền mặt
     if (product.status !== 'available') return res.status(400).json({ success: false, message: 'Đã bán hoặc chờ xử lý' });
 
     product.status = 'cash-pending';
@@ -450,12 +462,11 @@ const confirmCashPurchase = async (req, res) => {
     product.isSold = true;
     await product.save();
 
-    // Tạo Order cho tiền mặt để lưu lịch sử
     await Order.create({
-        buyer: req.user.walletAddress, // Lưu tạm wallet người mua (nếu có) hoặc cần lưu UserID
+        buyer: req.user.walletAddress, 
         product: product._id,
-        quantity: product.quantity, // Mua hết
-        totalPrice: 0, // Tiền mặt không track giá ETH
+        quantity: product.quantity, 
+        totalPrice: 0, 
         paymentMethod: 'cash',
         status: 'completed'
     });
@@ -488,5 +499,5 @@ module.exports = {
   confirmCashPurchase,
   getPendingProducts,
   approveProduct,
-  getFarmerRefundRequests // [MỚI] Export thêm hàm này
+  getFarmerRefundRequests
 };
