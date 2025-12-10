@@ -190,7 +190,7 @@ const Header = () => {
                       {/* Menu dành cho NÔNG DÂN */}
                       {user?.role === 'farmer' && (
                         <Link to="/farmer" onClick={() => setIsDropdownOpen(false)} className="block px-4 py-2 text-gray-700 hover:bg-gray-100 hover:text-green-600 font-medium">
-                          🌾 Farmer Dashboard
+                           Farmer Dashboard
                         </Link>
                       )}
 
@@ -205,7 +205,7 @@ const Header = () => {
                          Cài đặt thông tin
                       </button>
                       <button onClick={() => { logout(); setIsDropdownOpen(false); }} className="block w-full text-left px-4 py-2 text-red-600 hover:bg-red-50">
-                        🚪 Đăng xuất
+                         Đăng xuất
                       </button>
                     </nav>
                   </div>

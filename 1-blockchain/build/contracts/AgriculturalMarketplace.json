@@ -9701,12 +9701,12 @@
     "1337": {
       "events": {},
       "links": {},
-      "address": "0x4AE97FafE2a7fb2453525FEa909B56665B9B405e",
-      "transactionHash": "0x123a800594a83a0e54445c5a2c683ada8a20143163db1fba1b41ff0e26779b4c"
+      "address": "0xf804dd88016619f580986E7555F9D34048843E1B",
+      "transactionHash": "0x45efddde4f0fabfb00b9d524bdc8a5042c927b18c9b1c3c55dda945e37e94667"
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2025-12-08T13:42:18.442Z",
+  "updatedAt": "2025-12-10T03:28:15.511Z",
   "networkType": "ethereum",
   "devdoc": {
     "kind": "dev",

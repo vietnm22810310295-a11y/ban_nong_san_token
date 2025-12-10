@@ -69,7 +69,7 @@ const HomePage = () => {
               <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <div className="w-12 h-12 bg-green-500 rounded-md flex items-center justify-center">
-                    <span className="text-white text-xl">🔍</span>
+                    <span className="text-white text-xl"></span>
                   </div>
                 </div>
                 <div className="ml-4">

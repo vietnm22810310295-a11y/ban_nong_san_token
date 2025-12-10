@@ -342,7 +342,7 @@ const ProductsPage = () => {
 
           {/* Bộ Lọc */}
           <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">🔍 Lọc sản phẩm</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4"> Lọc sản phẩm</h3>
             <div className="grid grid-cols-1 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tìm kiếm</label>
@@ -385,10 +385,10 @@ const ProductsPage = () => {
             </div>
             <div className="grid grid-cols-1 gap-2 mt-4">
               <button onClick={applyFilters} disabled={loading} className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 transition-colors">
-                {loading ? <LoadingSpinner size="small" /> : '🔍 Lọc'}
+                {loading ? <LoadingSpinner size="small" /> : ' Lọc'}
               </button>
               <button onClick={clearFilters} className="w-full px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors">
-                🗑️ Xóa lọc
+                 Xóa lọc
               </button>
             </div>
           </div>
@@ -440,7 +440,7 @@ const ProductsPage = () => {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
               <h3 className="text-lg font-medium text-blue-900 mb-2">Bạn có sản phẩm muốn bán?</h3>
               <Link to="/farmer" className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors">
-                👨‍🌾 Đến Farmer Dashboard
+                 Đến Farmer Dashboard
               </Link>
             </div>
           )}
